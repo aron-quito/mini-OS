@@ -297,7 +297,7 @@ miniOS> ps-mini
 
 ### ├─ 📝 Issue 3.1: Estructuras de datos de memoria y lista de bloques
 **Descripción:**
-Diseñar en `src/memory/memory.h` las estructuras que modelan la memoria física simulada mediante una lista enlazada ordenada por direcciones base de bloques.
+Diseñar en `src/memory/memory.h` las estructuras que modelan la memoria física simulada mediante una lista enlazada ordenada por direcciones base de bloques para Particionamiento Dinámico Contiguo.
 
 **Estructuras de referencia:**
 ```c
@@ -316,7 +316,7 @@ typedef struct {
     int total_ram_kb;
     int page_size_kb;
     int total_frames;
-    char algorithm[8];          // "ff" o "pag"
+    char algorithm[8];          // "ff" (First-Fit contiguo) o "pag" (Paginación)
     MemBlock *block_list;
 } MemoryState;
 
@@ -326,24 +326,25 @@ void mem_reset_blocks(void);
 ```
 
 **Criterios de aceptación:**
-- [ ] Inicializa la RAM como un único bloque `BLOCK_FREE` de tamaño `total_ram_kb`.
+- [ ] Inicializa la RAM en First-Fit como un único bloque gigante `BLOCK_FREE` de tamaño `total_ram_kb`.
 - [ ] La lista enlazada mantiene siempre orden ascendente por `start_kb`.
+- [ ] En modo First-Fit la memoria opera como espacio contiguo lineal sin requerir marcos ni páginas.
 
 **🔗 Depende de:** Issue 1.4
 
 ---
 
-### ├─ 📝 Issue 3.2: Comandos de configuración de RAM y presets (default marcos)
+### ├─ 📝 Issue 3.2: Comandos de configuración de RAM y presets
 **Descripción:**
-Implementar comandos para configurar el tamaño general de RAM, el tamaño de paginación y marcos, así como el comando preset `mem-config default` (o `ff default marcos`) para establecer valores predeterminados seguros.
+Implementar comandos para configurar el tamaño general de RAM y los parámetros latentes de marcos/páginas, así como el comando preset `mem-config default` para establecer valores predeterminados seguros para la evaluación.
 
 **Comandos de terminal:**
 ```
-miniOS> mem-config ram <KB>          # Define tamaño general de RAM (ej. 1024 KB)
-miniOS> mem-config page <KB>         # Define tamaño de página/marco (ej. 64 KB, potencia de 2)
-miniOS> mem-config frames <N>        # Configura cantidad de marcos explícita
-miniOS> mem-config default           # Preset: 1024 KB RAM, 64 KB página, 16 marcos, algoritmo FF
-miniOS> mem-status                   # Muestra resumen de parámetros y estado
+miniOS> mem-config ram <KB>          # Define tamaño general de RAM e inicializa bloque gigante libre
+miniOS> mem-config page <KB>         # Parámetro latente para Paginación (potencia de 2, ej. 64 KB)
+miniOS> mem-config frames <N>        # Cantidad de marcos calculada / configurada para Paginación
+miniOS> mem-config default           # Preset: 1024 KB RAM, 64 KB página (16 marcos latentes), Algoritmo FF activo
+miniOS> mem-status                   # Muestra resumen adaptado al algoritmo activo (bloques en FF, marcos en PAG)
 ```
 
 **Validaciones requeridas:**
@@ -351,10 +352,12 @@ miniOS> mem-status                   # Muestra resumen de parámetros y estado
 - `page_size_kb` debe ser potencia de 2 (`32`, `64`, `128`, etc.).
 - Cálculo automático de consistencia: `total_frames = total_ram_kb / page_size_kb`.
 - No se permite reconfigurar si hay procesos activos en memoria (exige liberación previa).
+- Bloqueo de comandos incompatibles: si el algoritmo activo es `ff`, los comandos `mem-page-table` y `mem-translate` son rechazados con mensaje explicativo.
 
 **Criterios de aceptación:**
 - [ ] Parámetros configurables individualmente o con preset por defecto.
-- [ ] `mem-status` muestra RAM total, libre, usada, número de marcos y tamaño de página.
+- [ ] `mem-status` muestra el estado específico del algoritmo activo (bloque gigante continuo en FF, marcos en PAG).
+- [ ] En modo First-Fit se bloquea la invocación de operaciones propias de Paginación.
 
 **🔗 Depende de:** Issue 3.1
 
@@ -639,6 +642,7 @@ miniOS> mem-translate 42 192
 ```
 
 **Criterios de aceptación:**
+- [ ] Verifica que el algoritmo activo sea `pag`; si está en `ff`, rechaza con mensaje informativo indicando usar `switch-ram pag`.
 - [ ] Valida que el proceso exista y la página esté dentro de su límite (`valid == 1`).
 - [ ] Detecta fallos de dirección inválida con mensaje: `[ERROR] Fallo de segmentación / página no asignada`.
 
@@ -663,6 +667,7 @@ miniOS> mem-page-table 42
 ```
 
 **Criterios de aceptación:**
+- [ ] Verifica que el algoritmo activo sea `pag`; en modo `ff` rechaza la ejecución indicando la incompatibilidad.
 - [ ] Imprime la relación página -> marco con formato amigable.
 - [ ] `pag_free` libera los marcos en `FrameTable` e invoca `mem_queue_process_waiting` para asignar procesos en espera.
 

@@ -14,13 +14,32 @@
 **Pre-condición:** Memoria configurada con `mem-config`. Modo `pag` activo (tras `switch-ram pag`).
 **Post-condición:** El proceso tiene `n` páginas asignadas a marcos físicos no contiguos.
 
-### Configuración previa:
+### Configuración previa y validaciones:
 ```
 >> mem-config ram 1024
+<< [OK] RAM total configurada: 1024 KB
+
 >> mem-config page 64
+<< [OK] Tamaño de página: 64 KB
+<< [INFO] Número de marcos calculado: 16 (1024 / 64)
+
 >> switch-ram pag
 << [OK] Algoritmo cambiado a: Paginación
 << [INFO] 16 marcos físicos disponibles (1024 KB / 64 KB)
+```
+
+### Flujo Alternativo: tamaño de página inválido (no potencia de 2)
+```
+>> mem-config page 100
+<< [ERROR] El tamaño de página debe ser potencia de 2 (ej: 32, 64, 128, 256).
+<< miniOS>
+```
+
+### Flujo Alternativo: tamaño de página mayor que RAM
+```
+>> mem-config page 2048
+<< [ERROR] El tamaño de página (2048 KB) no puede ser mayor que la RAM (1024 KB).
+<< miniOS>
 ```
 
 ### Flujo Principal
@@ -104,6 +123,16 @@ Página 3: marco 3 * 64 = 192 KB
 ```
 >> mem-page-table 999
 << [ERROR] PID 999 no tiene tabla de páginas. No hay memoria asignada.
+<< miniOS>
+```
+
+### Flujo Alternativo: Intento de ejecución con algoritmo First-Fit activo
+```
+[Algoritmo activo: First-Fit]
+>> mem-page-table 42
+<< [ERROR] El comando 'mem-page-table' solo está disponible en modo Paginación.
+<< [INFO] El simulador se encuentra actualmente en modo First-Fit ('ff').
+<< [INFO] Use 'switch-ram pag' para conmutar al modelo de paginación con tablas de páginas.
 << miniOS>
 ```
 
@@ -196,10 +225,22 @@ Entrada: logical=200, page_size=64
 << miniOS>
 ```
 
+### Caso 3: Intento de traducción en modo First-Fit (Rechazo)
+```
+[Algoritmo activo: First-Fit]
+>> mem-translate 42 100
+
+<< [ERROR] El comando 'mem-translate' requiere el modo Paginación ('pag').
+<< [INFO] En First-Fit se utiliza direccionamiento contiguo directo (offset base en memoria física).
+<< [INFO] Use 'switch-ram pag' si desea experimentar con traducción por tablas de páginas.
+<< miniOS>
+```
+
 ### Criterios de aceptación
 - El sistema NO falla (no crash, no acceso a memoria inválida en C)
 - El mensaje indica claramente: qué página se intentó acceder y cuáles son válidas
 - El bit de validez `valid=0` es chequeado explícitamente
+- Si el algoritmo activo es First-Fit, rechaza la operación sin alterar el estado
 
 ---
 

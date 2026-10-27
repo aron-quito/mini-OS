@@ -16,17 +16,18 @@
 ### Flujo Principal
 ```
 >> mem-status
-<< Algoritmo: First-Fit | Libre: 1024 KB (100%)
+<< Algoritmo: First-Fit (Partición Dinámica) | Libre: 1024 KB (100% en 1 bloque gigante)
 
 >> switch-ram pag
 
-<< [INFO] Memoria libre. Cambiando algoritmo...
+<< [INFO] Memoria libre. Cambiando de particionamiento dinámico a paginación...
 << [OK] Algoritmo cambiado a: Paginación
-<< [INFO] Estructuras First-Fit limpiadas. Tabla de marcos reinicializada.
+<< [INFO] Lista de bloques First-Fit limpiada.
+<< [INFO] Memoria física estructurada en 16 marcos fijos de 64 KB.
 << miniOS>
 
 >> mem-status
-<< Algoritmo: Paginación | Marcos: 16 | Libres: 16 | Usado: 0 KB
+<< Algoritmo: Paginación | Tamaño de página: 64 KB | Marcos: 16 | Libres: 16 | Usado: 0 KB
 ```
 
 ### Criterios de aceptación
@@ -127,8 +128,8 @@
 >> switch-ram best-fit
 << [ERROR] Algoritmo desconocido: 'best-fit'.
 << Uso: switch-ram [ff|pag]
-<<   ff  = First-Fit (bloques contiguos)
-<<   pag = Paginación (marcos no contiguos)
+<<   ff  = First-Fit (particionamiento dinámico en bloques contiguos)
+<<   pag = Paginación (división en marcos físicos y páginas lógicas)
 << miniOS>
 ```
 
@@ -172,13 +173,17 @@
 >> switch-ram ff
 << ¿Desea continuar? [s/N]: s
 << [OK] Algoritmo cambiado a: First-Fit
+<< [INFO] Tablas de páginas y marcos físicos purgados.
+<< [INFO] Memoria reinicializada como 1 bloque continuo gigante libre (1024 KB).
 
->> mem-alloc 1 200       # Ahora en modo FF de nuevo
+>> mem-alloc 1 200       # Ahora en modo FF de nuevo (bloque contiguo con split dinámico)
 >> mem-view
-<< [P1: 200KB (ajustado al bloque)][FREE: ...]
+<< [P1: 200KB][FREE: 824KB]
 ```
 
 ### Criterios de aceptación
 - Cada switch limpia completamente las estructuras del algoritmo anterior
+- Al conmutar a First-Fit, la RAM se restaura como un único bloque continuo gigante libre
+- Al conmutar a Paginación, la RAM se estructura en marcos fijos de tamaño `page_size`
 - No hay datos residuales de algoritmos anteriores causando comportamiento incorrecto
 - El sistema funciona correctamente tras múltiples cambios

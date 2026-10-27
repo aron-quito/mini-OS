@@ -1,55 +1,47 @@
 # Casos de Uso — UC-02: Módulo 3 — Memoria First-Fit
 
-**Módulo:** Módulo 3 — Memoria (Algoritmo First-Fit)
-**Estructuras clave:** `MemoryState`, `MemBlock` (lista enlazada)
+**Módulo:** Módulo 3 — Memoria (Algoritmo First-Fit — Particionamiento Dinámico Contiguo)
+**Estructuras clave:** `MemoryState`, `MemBlock` (lista enlazada dinámica)
 **Actor:** Usuario de consola Linux
 
 ---
 
-## UC-02-01: Configurar parámetros iniciales de memoria
+## UC-02-01: Configurar parámetros iniciales de memoria (First-Fit)
 
 **ID:** UC-02-01
-**Nombre:** Configurar RAM total, tamaño de página y algoritmo
+**Nombre:** Configurar RAM total e inicializar bloque gigante First-Fit
 **Pre-condición:** El shell está en ejecución. No hay memoria asignada.
-**Post-condición:** La memoria simulada está configurada y lista para usar.
+**Post-condición:** La memoria física simulada está inicializada como un único bloque continuo libre de tamaño total.
 
 ### Flujo Principal
 ```
 >> mem-config ram 1024
 << [OK] RAM total configurada: 1024 KB
-
->> mem-config page 64
-<< [OK] Tamaño de página: 64 KB
-<< [INFO] Número de marcos calculado: 16 (1024 / 64)
+<< [INFO] Particionamiento dinámico: 1 bloque libre continuo de 1024 KB inicializado.
 
 >> mem-config default
-<< [OK] Presets aplicados: RAM = 1024 KB, Página = 64 KB, Marcos = 16, Algoritmo = First-Fit
+<< [OK] Presets aplicados: RAM = 1024 KB, Algoritmo = First-Fit (Particionamiento Dinámico Contiguo)
 
 >> mem-status
-<< ╔══════════════════════════════════════╗
-<< ║     ESTADO DE MEMORIA — MiniOS       ║
-<< ╠══════════════════════════════════════╣
-<< ║  RAM total   : 1024 KB               ║
-<< ║  Página size : 64 KB                 ║
-<< ║  Marcos      : 16                    ║
-<< ║  Algoritmo   : First-Fit             ║
-<< ║  Libre       : 1024 KB (100.0%)      ║
-<< ║  Usado       : 0 KB (0.0%)           ║
-<< ╚══════════════════════════════════════╝
+<< ╔════════════════════════════════════════════════╗
+<< ║          ESTADO DE MEMORIA — MiniOS            ║
+<< ╠════════════════════════════════════════════════╣
+<< ║  RAM total   : 1024 KB                         ║
+<< ║  Algoritmo   : First-Fit (Partición Dinámica)  ║
+<< ║  Esquema     : Bloques contiguos variables     ║
+<< ║  Bloques     : 1 bloque gigante libre          ║
+<< ║  Libre       : 1024 KB (100.0%)                ║
+<< ║  Usado       : 0 KB (0.0%)                     ║
+<< ╚════════════════════════════════════════════════╝
 << miniOS>
 ```
 
-### Flujo Alternativo: tamaño de página inválido (no potencia de 2)
+### Flujo Informativo: Configuración de página latente para futuro modo Paginación
 ```
->> mem-config page 100
-<< [ERROR] El tamaño de página debe ser potencia de 2 (ej: 32, 64, 128, 256).
-<< miniOS>
-```
-
-### Flujo Alternativo: tamaño de página mayor que RAM
-```
->> mem-config page 2048
-<< [ERROR] El tamaño de página (2048 KB) no puede ser mayor que la RAM (1024 KB).
+>> mem-config page 64
+<< [OK] Tamaño de página establecido a: 64 KB (16 marcos calculados para 1024 KB de RAM).
+<< [INFO] Modo actual: First-Fit (particionamiento dinámico continuo sin marcos).
+<<        Este parámetro solo se activará al cambiar a modo Paginación ('switch-ram pag').
 << miniOS>
 ```
 
@@ -291,5 +283,35 @@ Libre total: 724 KB | Libre contiguo máximo: 424 KB
 ```
 >> mem-free 999
 << [ERROR] PID 999 no tiene bloques asignados en memoria.
+<< miniOS>
+```
+
+---
+
+## UC-02-07: Intento de invocar comandos de Paginación en modo First-Fit (Rechazo seguro)
+
+**ID:** UC-02-07
+**Nombre:** Bloqueo de comandos de paginación durante el modo First-Fit
+**Pre-condición:** El algoritmo activo es First-Fit (`ff`).
+**Post-condición:** Los comandos de paginación son rechazados de forma segura con mensaje explicativo; el estado de la memoria contigua permanece intacto.
+
+### Caso 1: Intentar consultar tabla de páginas en First-Fit
+```
+>> mem-alloc 42 256
+>> mem-page-table 42
+
+<< [ERROR] El comando 'mem-page-table' solo está disponible en modo Paginación.
+<< [INFO] En First-Fit la memoria se administra como particiones dinámicas contiguas, sin páginas ni marcos.
+<< [INFO] Para utilizar el modelo de paginación, cambie de algoritmo con 'switch-ram pag'.
+<< miniOS>
+```
+
+### Caso 2: Intentar traducir dirección lógica a física con tabla de páginas en First-Fit
+```
+>> mem-translate 42 100
+
+<< [ERROR] El comando 'mem-translate' requiere el modo Paginación ('pag').
+<< [INFO] First-Fit utiliza direccionamiento contiguo directo (offset base en memoria física).
+<< [INFO] Use 'switch-ram pag' si desea experimentar con traducción por tablas de páginas.
 << miniOS>
 ```

@@ -9,9 +9,9 @@ del sistema MiniSO. Cada archivo describe una interacción posible con el sistem
 |---------|--------|-------------|
 | [UC-00-shell-base.md](UC-00-shell-base.md) | Shell Base | Interacciones básicas del shell (REPL, help, clear, exit) |
 | [UC-01-procesos.md](UC-01-procesos.md) | Módulo 1: Procesos | Gestión de procesos con fork/exec/wait, background y ps-mini |
-| [UC-02-memoria-ff.md](UC-02-memoria-ff.md) | Módulo 3: Memoria | Configuración de RAM, presets y algoritmo First-Fit |
-| [UC-03-memoria-paginacion.md](UC-03-memoria-paginacion.md) | Módulo 3: Memoria | Algoritmo de Paginación y traducción matemática |
-| [UC-04-switch-ram.md](UC-04-switch-ram.md) | Módulo 3: Memoria | Comando switch-ram con capa de seguridad interactiva [s/N] |
+| [UC-02-memoria-ff.md](UC-02-memoria-ff.md) | Módulo 3: Memoria | Particionamiento dinámico contiguo (bloque gigante inicial, First-Fit y split/coalescencia) |
+| [UC-03-memoria-paginacion.md](UC-03-memoria-paginacion.md) | Módulo 3: Memoria | Algoritmo de Paginación pura (marcos físicos, tablas de páginas y traducción matemática) |
+| [UC-04-switch-ram.md](UC-04-switch-ram.md) | Módulo 3: Memoria | Conmutación segura de algoritmos [ff|pag] y reseteo de estructuras de memoria |
 | [UC-05-hilos.md](UC-05-hilos.md) | Módulo 2: Hilos | Productor-Consumidor con pthread y verificación de 0 pérdidas |
 | [UC-06-cola-memoria.md](UC-06-cola-memoria.md) | Módulo 3: Memoria | Cola de espera (mem_queue) por RAM insuficiente y auto-asignación |
 
