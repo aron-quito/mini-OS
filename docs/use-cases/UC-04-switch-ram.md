@@ -55,13 +55,13 @@
 ```
 >> switch-ram pag
 
-<< ADVERTENCIA: Hay 2 proceso(s) con memoria asignada.
-<<              El cambio de algoritmo liberará TODA la memoria actual.
-<<              Los datos de asignación de los procesos se perderán.
+<< ADVERTENCIA: Hay 2 proceso(s) en RAM y 1 en cola de espera.
+<<              El cambio a 'pag' liberará toda la memoria y purgará la cola.
 << ¿Desea continuar? [s/N]: s
 
 << [INFO] Liberando memoria de PID 10... OK
 << [INFO] Liberando memoria de PID 20... OK
+<< [INFO] Purgando cola de espera (1 proceso cancelado)... OK
 << [INFO] Estructuras First-Fit limpiadas.
 << [OK] Algoritmo cambiado a: Paginación
 << [INFO] 16 marcos físicos disponibles.

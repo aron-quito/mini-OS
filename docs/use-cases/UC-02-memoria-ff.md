@@ -22,8 +22,8 @@
 << [OK] Tamaño de página: 64 KB
 << [INFO] Número de marcos calculado: 16 (1024 / 64)
 
->> mem-config frames ff
-<< [OK] Algoritmo por defecto: First-Fit
+>> mem-config default
+<< [OK] Presets aplicados: RAM = 1024 KB, Página = 64 KB, Marcos = 16, Algoritmo = First-Fit
 
 >> mem-status
 << ╔══════════════════════════════════════╗
@@ -123,15 +123,24 @@ Libre total: 724 KB | Libre contiguo máximo: 424 KB
 ```
 >> mem-alloc 99 600
 
-<< [FF] ERROR: No hay bloque contiguo de 600 KB disponible.
+<< [FF] ALERTA: No hay bloque contiguo de 600 KB disponible en RAM.
 << [INFO] Memoria libre total: 724 KB | Mayor bloque contiguo libre: 424 KB
 << [INFO] Hay 2 bloque(s) libres no contiguos (fragmentación externa).
+<< [QUEUE] Proceso PID 99 encolado en cola de espera de RAM (Posición: 1).
 << miniOS>
+
+>> mem-queue
+<< ╔═════╦════════╦══════════════╦═════════════════════╗
+<< ║ Pos ║ PID    ║ Tamaño (KB)  ║ Tiempo en espera    ║
+<< ╠═════╬════════╬══════════════╬═════════════════════╣
+<< ║  1  ║ 99     ║ 600 KB       ║ 00:00:03            ║
+<< ╚═════╩════════╩══════════════╩═════════════════════╝
 ```
 
 ### Criterios de aceptación
-- El error especifica que es un problema de **contigüidad**, no de espacio total
-- Se muestra el mayor bloque libre disponible para orientar al usuario
+- El sistema detecta la fragmentación externa sin abortar la ejecución.
+- El proceso PID 99 es automáticamente encolado en `mem_queue`.
+- Se informa al usuario el mayor bloque contiguo y la posición asignada en cola.
 
 ---
 
