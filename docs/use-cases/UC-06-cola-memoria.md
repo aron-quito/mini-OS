@@ -33,6 +33,16 @@ La memoria libre total es de 384 KB, dividida en dos bloques no contiguos de 128
 << [QUEUE] Proceso PID 105 encolado en espera de memoria RAM (Posición: 1).
 << miniOS>
 
+### Flujo Alternativo: Encolado directo al lanzar proceso en background (e.g., sleep)
+```
+>> sleep 20 300 &
+
+<< [ALERTA RAM] Memoria contigua insuficiente para ejecutar 'sleep 20' en paralelo (Requerido: 300 KB | Mayor bloque libre: 256 KB).
+<< [QUEUE] Proceso 'sleep 20' encolado en espera de memoria RAM (Posición: 1).
+<< [INFO] Su ejecución se reanudará automáticamente al liberarse memoria.
+<< miniOS>
+```
+
 >> mem-queue
 << ╔═════╦════════╦══════════════╦═════════════════════╗
 << ║ Pos ║ PID    ║ Tamaño (KB)  ║ Tiempo en espera    ║
@@ -136,8 +146,18 @@ Se libera el proceso PID 20 (384 KB).
 << ╚════════════════════════════════════════════════════════════════════╝
 ```
 
+### Flujo Alternativo: Desencolado automático al finalizar un proceso en background (sleep)
+```
+[Proceso PID 4531 (sleep 5) finaliza naturalmente tras 5 segundos]
+<< [NOTIFICACIÓN] PID 4531 (sleep 5) finalizado (Código de salida: 0).
+<< [RAM AUTO-FREE] 128 KB liberados de PID 4531. Coalescencia aplicada.
+<< [QUEUE-TRIGGER] Bloque libre contiguo resultante: 384 KB.
+<< [AUTO-LAUNCH] Proceso en espera 'sleep 20' (300 KB) desencolado, asignado a RAM y lanzado en background como PID 4535.
+<< miniOS>
+```
+
 ### Criterios de aceptación
-- `mem-free` dispara la verificación sin requerir comandos adicionales del usuario.
+- `mem-free` y la terminación natural de procesos en background (atrapada por `SIGCHLD`) disparan la verificación sin requerir comandos adicionales del usuario.
 - El proceso sale de la cola (`dequeue`) solo si la asignación es completamente exitosa.
 - Si hay más procesos en la cola, evalúa en orden FIFO si el siguiente también cabe.
 

@@ -220,20 +220,23 @@ int execute_foreground(Command *cmd) {
 
 ---
 
-### ├─ 📝 Issue 2.2: Ejecución en background con operador &
+### ├─ 📝 Issue 2.2: Ejecución en background con operador & y reserva de memoria
 **Descripción:**
-Permitir que un comando terminado en `&` se ejecute de manera asíncrona. El shell no espera con `waitpid(pid, ..., 0)`, sino que imprime el PID asignado y devuelve el prompt de inmediato.
+Permitir que un comando terminado en `&` (e.g. `sleep 10 256 &` o `sleep 10 &`) se ejecute de manera asíncrona. El shell valida primero el espacio disponible en la RAM simulada. Si hay espacio, reserva el bloque (o marcos) y lanza el proceso sin esperar con `waitpid()` bloqueante; si no hay espacio, genera una alerta de RAM insuficiente y encola el proceso en `mem_queue`.
 
 **Comportamiento esperado:**
 ```
-miniOS> sleep 10 &
-[BG] Proceso lanzado en background con PID: 24891
+miniOS> sleep 10 256 &
+[RAM ALLOC] PID 24891 asignado en RAM: 256 KB
+[BG] Proceso lanzado en background con PID: 24891 | RAM: 256 KB
 miniOS> 
 ```
 
 **Criterios de aceptación:**
 - [ ] No bloquea el terminal para que el usuario continúe interactuando.
-- [ ] Registra el proceso en la tabla de procesos activos en segundo plano.
+- [ ] Reserva memoria en el subsistema de RAM (`ff_alloc` o `pag_alloc`).
+- [ ] Si la memoria es insuficiente, emite alerta y encola en `mem_queue` sin tumbar el shell.
+- [ ] Al finalizar el proceso (`SIGCHLD`), libera automáticamente la memoria asignada y aplica coalescencia.
 
 **🔗 Depende de:** Issue 2.1
 
@@ -241,7 +244,7 @@ miniOS>
 
 ### ├─ 📝 Issue 2.3: Tabla de control de procesos en background
 **Descripción:**
-Mantener una tabla dinámica/array de procesos lanzados (`bg_table`) para registrar su PID, PPID, comando ejecutado y estado (`RUNNING`, `FINISHED`, `TERMINATED`).
+Mantener una tabla dinámica/array de procesos lanzados (`bg_table`) para registrar su PID, PPID, comando ejecutado, memoria ocupada en KB y estado (`RUNNING`, `FINISHED`, `TERMINATED`).
 
 **Estructura:**
 ```c
@@ -251,6 +254,7 @@ typedef struct {
     pid_t pid;
     pid_t ppid;
     char command[128];
+    int mem_kb;                 // Memoria ocupada en RAM (KB)
     ProcessStatus status;
     int exit_code;
 } BgProcess;
@@ -258,6 +262,7 @@ typedef struct {
 
 **Criterios de aceptación:**
 - [ ] Almacena hasta un límite configurado de procesos concurrentes (ej. 32).
+- [ ] Registra y actualiza la cantidad de KB ocupados por cada proceso.
 - [ ] Actualiza el estado sin bloquear el shell.
 
 **🔗 Depende de:** Issue 2.2
@@ -266,22 +271,22 @@ typedef struct {
 
 ### ├─ 📝 Issue 2.4: Comando ps-mini — Visualizador de procesos de la sesión
 **Descripción:**
-Implementar el comando interno `ps-mini` que visualiza la lista de procesos creados desde el inicio del shell con sus metadatos en formato tabular estructurado.
+Implementar el comando interno `ps-mini` que visualiza la lista de procesos creados desde el inicio del shell con sus metadatos en formato tabular estructurado, incluyendo la memoria RAM reservada.
 
 **Salida en terminal:**
 ```
 miniOS> ps-mini
-╔════╦════════╦════════╦══════════════════════╦══════════════╗
-║ #  ║ PID    ║ PPID   ║ Comando              ║ Estado       ║
-╠════╬════════╬════════╬══════════════════════╬══════════════╣
-║ 1  ║ 24891  ║ 24800  ║ sleep 10             ║ RUNNING      ║
-║ 2  ║ 24895  ║ 24800  ║ ls -la               ║ DONE (0)     ║
-╚════╩════════╩════════╩══════════════════════╩══════════════╝
+╔════╦════════╦════════╦══════════════════════╦══════════════╦══════════════╗
+║ #  ║ PID    ║ PPID   ║ Comando              ║ RAM (KB)     ║ Estado       ║
+╠════╬════════╬════════╬══════════════════════╬══════════════╬══════════════╣
+║ 1  ║ 24891  ║ 24800  ║ sleep 10             ║ 256 KB       ║ RUNNING      ║
+║ 2  ║ 24895  ║ 24800  ║ ls -la               ║ 128 KB       ║ DONE (0)     ║
+╚════╩════════╩════════╩══════════════════════╩══════════════╩══════════════╝
 ```
 
 **Criterios de aceptación:**
-- [ ] Muestra columnas: Número, PID, PPID, Comando y Estado.
-- [ ] Diferencia entre procesos en ejecución y finalizados.
+- [ ] Muestra columnas: Número, PID, PPID, Comando, RAM (KB) y Estado.
+- [ ] Diferencia entre procesos en ejecución y finalizados (liberados).
 
 **🔗 Depende de:** Issue 2.3
 

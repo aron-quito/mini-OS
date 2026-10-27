@@ -84,75 +84,122 @@ padre: waitpid(4523) -> WEXITSTATUS=1
 
 ---
 
-## UC-01-03: Ejecutar proceso en background con `&`
+## UC-01-03: Ejecutar proceso en background con reserva de memoria (`&`)
 
 **ID:** UC-01-03
-**Nombre:** Lanzar proceso en segundo plano
-**Pre-condición:** El shell está en ejecución.
-**Post-condición:** El proceso corre en background; el shell muestra el prompt inmediatamente.
+**Nombre:** Lanzar proceso en segundo plano con asignación automática de memoria RAM
+**Pre-condición:** El shell está en ejecución con memoria configurada.
+**Post-condición:** El proceso corre en background y queda registrado en la memoria simulada; el shell muestra el prompt inmediatamente.
 
-### Flujo Principal
+### Flujo Principal (tamaño explícito en KB)
 ```
->> sleep 10 &
+>> sleep 10 256 &
 
-<< [1] PID: 4524 lanzado en background
+<< [Proceso lanzado] PID: 4524 | PPID: 4500 (miniOS)
+<< [RAM ALLOC] PID 4524 asignado exitosamente en RAM: 256 KB (Dirección base: 0 KB)
+<< [1] PID: 4524 (sleep 10) corriendo en background | RAM: 256 KB
 << miniOS>
 
 [El shell está disponible inmediatamente para nuevos comandos]
 ```
 
+### Flujo Principal (tamaño por defecto: 128 KB)
+```
+>> sleep 15 &
+
+<< [Proceso lanzado] PID: 4525 | PPID: 4500 (miniOS)
+<< [RAM ALLOC] Tamaño no especificado — asignado por defecto: 128 KB (Dirección base: 256 KB)
+<< [2] PID: 4525 (sleep 15) corriendo en background | RAM: 128 KB
+<< miniOS>
+```
+
+### Flujo Alternativo: Alerta por memoria insuficiente en paralelo (Encolado)
+```
+[Estado: RAM libre contigua = 100 KB]
+>> sleep 20 300 &
+
+<< [ALERTA RAM] Memoria contigua insuficiente para ejecutar PID 4526 en paralelo (Requerido: 300 KB | Libre contiguo: 100 KB).
+<< [QUEUE] Proceso 'sleep 20' retenido en cola de espera de RAM (mem_queue) en Posición: 1.
+<< [INFO] Se iniciará automáticamente en paralelo cuando otro proceso libere espacio.
+<< miniOS>
+```
+
 ### Detalle técnico
 ```
-fork() crea hijo PID=4524
-  hijo: execvp("sleep", ["sleep", "10", NULL])
-  padre: NO llama waitpid() bloqueante
-  padre: registra PID=4524 en bg_table[0]
-  padre: vuelve al prompt inmediatamente
+1. Shell analiza comando: detecta '&' y tamaño de memoria (256 KB o default 128 KB).
+2. Valida espacio con el subsistema de memoria (First-Fit o Paginación).
+   - Si no hay espacio: genera ALERTA y encola la solicitud en mem_queue.
+   - Si hay espacio: reserva el bloque/marcos para el nuevo proceso.
+3. fork() crea hijo PID=4524:
+     hijo: execvp("sleep", ["sleep", "10", NULL])
+     padre: NO llama waitpid() bloqueante.
+     padre: registra PID=4524 en bg_table[0] vinculando comando y size_kb=256.
+     padre: vuelve al prompt inmediatamente.
 ```
 
 ---
 
-## UC-01-04: Ejecución concurrente de 2 procesos en background
+## UC-01-04: Ejecución concurrente en background con ocupación de memoria y auto-liberación
 
 **ID:** UC-01-04
-**Nombre:** Verificar concurrencia de al menos 2 procesos simultáneos
-**Pre-condición:** El shell está en ejecución.
-**Post-condición:** Dos procesos corren simultáneamente sin interferirse.
+**Nombre:** Verificar concurrencia de al menos 2 procesos simultáneos, ocupación de RAM y auto-fusión
+**Pre-condición:** Memoria configurada (1024 KB en modo First-Fit).
+**Post-condición:** Dos procesos corren simultáneamente ocupando memoria física; al terminar, su memoria se libera y fusiona automáticamente sin intervención manual.
 
 ### Flujo Principal
 ```
->> sleep 8 &
-<< [1] PID: 4530 lanzado en background
+>> sleep 8 256 &
+<< [1] PID: 4530 lanzado en background | RAM asignada: 256 KB [0..255 KB]
 
->> sleep 5 &
-<< [2] PID: 4531 lanzado en background
-
->> ps-mini
-<< ╔════╦════════╦════════╦═══════════════╦══════════════╗
-<< ║ #  ║ PID    ║ PPID   ║ Comando       ║ Estado       ║
-<< ╠════╬════════╬════════╬═══════════════╬══════════════╣
-<< ║ 1  ║ 4530   ║ 4500   ║ sleep 8       ║ RUNNING      ║
-<< ║ 2  ║ 4531   ║ 4500   ║ sleep 5       ║ RUNNING      ║
-<< ╚════╩════════╩════════╩═══════════════╩══════════════╝
-<< miniOS>
-
-[Después de ~5 segundos, PID 4531 termina — cosechado por SIGCHLD handler]
-[Después de ~8 segundos, PID 4530 termina — cosechado por SIGCHLD handler]
+>> sleep 5 128 &
+<< [2] PID: 4531 lanzado en background | RAM asignada: 128 KB [256..383 KB]
 
 >> ps-mini
-<< ╔════╦════════╦════════╦═══════════════╦══════════════╗
-<< ║ #  ║ PID    ║ PPID   ║ Comando       ║ Estado       ║
-<< ╠════╬════════╬════════╬═══════════════╬══════════════╣
-<< ║ 1  ║ 4530   ║ 4500   ║ sleep 8       ║ DONE (0)     ║
-<< ║ 2  ║ 4531   ║ 4500   ║ sleep 5       ║ DONE (0)     ║
-<< ╚════╩════════╩════════╩═══════════════╩══════════════╝
+<< ╔════╦════════╦════════╦═══════════════╦══════════════╦══════════════╗
+<< ║ #  ║ PID    ║ PPID   ║ Comando       ║ RAM (KB)     ║ Estado       ║
+<< ╠════╬════════╬════════╬═══════════════╬══════════════╬══════════════╣
+<< ║ 1  ║ 4530   ║ 4500   ║ sleep 8       ║ 256 KB       ║ RUNNING      ║
+<< ║ 2  ║ 4531   ║ 4500   ║ sleep 5       ║ 128 KB       ║ RUNNING      ║
+<< ╚════╩════════╩════════╩═══════════════╩══════════════╩══════════════╝
 << miniOS>
+
+>> mem-view
+<< ╔══════════════════════════════════════════════════════════════════╗
+<< ║  [ P4530: 256 KB ][ P4531: 128 KB ][       FREE: 640 KB        ]  ║
+<< ║  Usado: 384 KB (37.5%) | Libre: 640 KB (62.5%)                    ║
+<< ╚══════════════════════════════════════════════════════════════════╝
+<< miniOS>
+
+[Tras ~5 segundos, PID 4531 termina — cosechado automáticamente por el manejador SIGCHLD]
+<< [NOTIFICACIÓN] PID 4531 (sleep 5) finalizado (Código de salida: 0).
+<< [RAM AUTO-FREE] 128 KB liberados de PID 4531. Coalescencia aplicada con bloque contiguo libre (Total libre ahora: 768 KB).
+
+[Tras ~8 segundos, PID 4530 termina — cosechado automáticamente por el manejador SIGCHLD]
+<< [NOTIFICACIÓN] PID 4530 (sleep 8) finalizado (Código de salida: 0).
+<< [RAM AUTO-FREE] 256 KB liberados de PID 4530. Coalescencia completa: Memoria restaurada a 1 bloque gigante libre (1024 KB).
+
+>> ps-mini
+<< ╔════╦════════╦════════╦═══════════════╦══════════════╦══════════════╗
+<< ║ #  ║ PID    ║ PPID   ║ Comando       ║ RAM (KB)     ║ Estado       ║
+<< ╠════╬════════╬════════╬═══════════════╬══════════════╬══════════════╣
+<< ║ 1  ║ 4530   ║ 4500   ║ sleep 8       ║ 0 KB (lib)   ║ DONE (0)     ║
+<< ║ 2  ║ 4531   ║ 4500   ║ sleep 5       ║ 0 KB (lib)   ║ DONE (0)     ║
+<< ╚════╩════════╩════════╩═══════════════╩══════════════╩══════════════╝
+<< miniOS>
+
+>> mem-view
+<< ╔══════════════════════════════════════════════════════════════════╗
+<< ║  [                       FREE                       ]           ║
+<< ║                           1024 KB                               ║
+<< ║  Libre  : 1024 KB (100%) | Sin fragmentación                    ║
+<< ╚══════════════════════════════════════════════════════════════════╝
 ```
 
 ### Criterios de aceptación
-- Los dos procesos corren simultáneamente (verificable con `ps aux` del sistema)
-- El manejador SIGCHLD cosecha los hijos sin crear zombies
-- `ps-mini` refleja el estado actualizado tras la terminación
+- Los procesos corren simultáneamente en el sistema operativo y ocupan bloques reales en el simulador de memoria.
+- `ps-mini` y `mem-view` muestran coherentemente los mismos PIDs y tamaños de RAM.
+- Al terminar un proceso hijo, el manejador `SIGCHLD` libera automáticamente su memoria asignada sin necesidad de llamar manualmente a `mem-free`.
+- Se aplica coalescencia inmediata uniendo los bloques liberados con el resto del espacio libre.
 
 ---
 
