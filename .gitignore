@@ -1,0 +1,36 @@
+# Binarios y ejecutables
+mini-os
+*.exe
+*.out
+*.app
+
+# Archivos objeto y librerías
+*.o
+*.obj
+*.so
+*.dylib
+*.a
+
+# Directorios de compilación y depuración
+build/
+bin/
+*.dSYM/
+
+# Valgrind y reportes de depuración
+valgrind-out.txt
+*.valgrind
+valgrind.log
+vgcore.*
+
+# Archivos temporales y de respaldo
+*.tmp
+*~
+*.swp
+*.swo
+
+# Configuración de editores y SO
+.DS_Store
+.vscode/
+.idea/
+.tags
+tags
