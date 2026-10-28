@@ -31,21 +31,21 @@ La tarea **SIS-39** se concentra **única y exclusivamente** en hacer que el she
 
 ```mermaid
 flowchart TD
-    Start([Llamada a shell_loop]) --> PrintPrompt[Imprimir 'miniOS> ']
-    PrintPrompt --> Flush[fflush stdout]
-    Flush --> Read[fgets line, sizeof line, stdin]
+    Start(["Llamada a shell_loop"]) --> PrintPrompt["Mostrar prompt miniOS>"]
+    PrintPrompt --> Flush["fflush(stdout)"]
+    Flush --> Read["fgets(line, sizeof(line), stdin)"]
     
-    Read --> CheckEOF{¿fgets == NULL?\n(Ctrl+D / EOF)}
-    CheckEOF -- Sí --> LogEOF[Imprimir salto de línea y mensaje de salida]
-    LogEOF --> ExitClean([break del bucle -> Fin con código 0])
+    Read --> CheckEOF{"¿fgets devolvió NULL?<br>(Ctrl+D / EOF)"}
+    CheckEOF -- "Sí" --> LogEOF["Imprimir mensaje de fin de archivo"]
+    LogEOF --> ExitClean(["break del bucle -> Fin con código 0"])
     
-    CheckEOF -- No --> StripNL[Eliminar \r y \n con strcspn]
-    StripNL --> CheckEmpty{¿Línea vacía?\nstrlen == 0}
-    CheckEmpty -- Sí (Enter) --> PrintPrompt
+    CheckEOF -- "No" --> StripNL["Eliminar salto de línea con strcspn"]
+    StripNL --> CheckEmpty{"¿Línea vacía?<br>(strlen == 0)"}
+    CheckEmpty -- "Sí (Enter)" --> PrintPrompt
     
-    CheckEmpty -- No --> CheckExit{¿strcmp line, 'exit' == 0?}
-    CheckExit -- Sí --> ExitApp([exit 0 -> Salida inmediata limpia])
-    CheckExit -- No --> EchoLine[Imprimir línea leída provisionalmente\n(esperando parser en SIS-40)]
+    CheckEmpty -- "No" --> CheckExit{"¿Comando es exit?"}
+    CheckExit -- "Sí" --> ExitApp(["exit(0) -> Salida limpia"])
+    CheckExit -- "No" --> EchoLine["Mostrar línea recibida<br>(esperando parser en SIS-40)"]
     EchoLine --> PrintPrompt
 ```
 
