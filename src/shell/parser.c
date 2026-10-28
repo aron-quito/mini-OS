@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "shell/parser.h"
-#include "shell/shell.h"
+#include "parser.h"
+#include "shell.h"
 
 int parse_line(char *line, char **argv, int *is_background) {
     int argc = 0;

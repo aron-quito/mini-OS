@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - "-Isrc"
+    - "-std=c11"
+    - "-Wall"
+    - "-Wextra"
+    - "-D_POSIX_C_SOURCE=200809L"
+    - "-D_DEFAULT_SOURCE"

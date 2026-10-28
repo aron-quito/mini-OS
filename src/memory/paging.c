@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include "memory/paging.h"
+#include "paging.h"
 
 static frame_t s_frames[MAX_FRAMES];
 static int s_total_frames = 0;

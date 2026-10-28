@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "memory/mem_queue.h"
+#include "mem_queue.h"
 
 static mem_queue_node_t *s_head = NULL;
 static mem_queue_node_t *s_tail = NULL;

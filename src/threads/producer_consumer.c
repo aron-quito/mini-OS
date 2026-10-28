@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "threads/producer_consumer.h"
-#include "threads/buffer.h"
+#include "producer_consumer.h"
+#include "buffer.h"
 
 static thread_stats_t s_last_stats = {0, 0, 0, 0, 0.0};
 

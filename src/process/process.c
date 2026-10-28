@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include "process/process.h"
+#include "process.h"
 
 static bg_process_t s_bg_table[MAX_BG_PROCESSES];
 static int s_bg_count = 0;

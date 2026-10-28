@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <signal.h>
-#include "process/signals.h"
+#include "signals.h"
 
 void signals_init(void) {
     // Configuración base de señales (se profundizará en Issue 8.1 con sigaction)

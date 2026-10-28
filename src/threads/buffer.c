@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "threads/buffer.h"
+#include "buffer.h"
 
 void buffer_init(circular_buffer_t *b) {
     b->head = 0;

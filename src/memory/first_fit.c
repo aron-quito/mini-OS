@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "memory/first_fit.h"
+#include "first_fit.h"
 
 static ff_block_t *s_head = NULL;
 static int s_total_kb = 0;

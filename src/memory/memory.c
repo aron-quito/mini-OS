@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <string.h>
-#include "memory/memory.h"
-#include "memory/first_fit.h"
-#include "memory/paging.h"
-#include "memory/mem_queue.h"
+#include "memory.h"
+#include "first_fit.h"
+#include "paging.h"
+#include "mem_queue.h"
 
 static mem_config_t s_mem_config;
 

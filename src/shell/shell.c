@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "shell/shell.h"
-#include "shell/parser.h"
+#include "shell.h"
+#include "parser.h"
 
 void shell_init(void) {
     // Inicialización del estado del shell
