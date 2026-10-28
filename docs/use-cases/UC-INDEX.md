@@ -1,7 +1,7 @@
-# 📂 Casos de Uso — MiniSO
+# 📂 Casos de Uso — MiniOS
 
 Este directorio contiene la especificación detallada de todos los casos de uso
-del sistema MiniSO. Cada archivo describe una interacción posible con el sistema.
+del sistema MiniOS. Cada archivo describe una interacción posible con el sistema.
 
 ## Índice de Casos de Uso
 

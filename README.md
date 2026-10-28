@@ -1,4 +1,4 @@
-# MiniSO — Shell Interactivo con Gestión de Procesos, Hilos y Memoria
+# MiniOS — Shell Interactivo con Gestión de Procesos, Hilos y Memoria
 
 > **Proyecto Universitario — Sistemas Operativos**  
 > Aplicación de consola en C11 para entornos Linux con arquitectura modular.

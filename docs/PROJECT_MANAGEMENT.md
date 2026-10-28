@@ -1,4 +1,4 @@
-# 📁 PROJECT: MiniSO — Shell Interactivo con Gestión de Procesos, Hilos y Memoria
+# 📁 PROJECT: MiniOS — Shell Interactivo con Gestión de Procesos, Hilos y Memoria
 
 > **Curso:** Sistemas Operativos | **Plataforma:** Linux | **Prompt:** `miniOS> `
 
@@ -1009,7 +1009,7 @@ Actualizar el `README.md` del repositorio con la documentación completa del sis
 ### ├─ 📝 Issue 9.2: Informe técnico formal (6 a 10 páginas)
 **Descripción:**
 Redactar el informe técnico del proyecto cubriendo:
-1. Arquitectura modular del sistema MiniSO.
+1. Arquitectura modular del sistema MiniOS.
 2. Módulo 1: Decisiones de diseño en la gestión de procesos (`fork`, `exec`, `waitpid`, background).
 3. Módulo 2: Sincronización de hilos, análisis de condiciones de carrera y garantía de 0 pérdida.
 4. Módulo 3: Análisis comparativo entre First-Fit y Paginación, mitigación de fragmentación, diseño de la cola de espera de RAM (`mem_queue`) y capa de seguridad de `switch-ram`.
@@ -1067,4 +1067,4 @@ Grabar la demostración en consola Linux real, cubriendo todas las funcionalidad
 | `thread-stats` | Módulo 2 | Estadísticas de la sesión de hilos certificando 0 pérdidas de datos |
 
 ---
-*Documento estructurado bajo metodología ágil para Sistemas Operativos — MiniSO*
+*Documento estructurado bajo metodología ágil para Sistemas Operativos — MiniOS*

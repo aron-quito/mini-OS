@@ -2,14 +2,14 @@
 
 **Módulo:** Shell Base (REPL)
 **Actor:** Usuario de consola Linux
-**Sistema:** MiniSO Shell (`miniOS> `)
+**Sistema:** MiniOS Shell (`miniOS> `)
 
 ---
 
 ## UC-00-01: Iniciar el Shell
 
 **ID:** UC-00-01
-**Nombre:** Iniciar el Shell MiniSO
+**Nombre:** Iniciar el Shell MiniOS
 **Pre-condición:** El binario `./mini-os` ha sido compilado exitosamente con `make`.
 **Post-condición:** El shell está en ejecución y muestra el prompt `miniOS> `.
 
@@ -18,7 +18,7 @@
 Usuario ejecuta: ./mini-os
 
 << ╔══════════════════════════════════╗
-<< ║   MiniSO Shell v1.0              ║
+<< ║   MiniOS Shell v1.0              ║
 << ║   Sistemas Operativos — 2026     ║
 << ╚══════════════════════════════════╝
 << miniOS>
@@ -43,7 +43,7 @@ Usuario ejecuta: ./mini-os
 >> help
 
 << ╔══════════════════════════════════════════════════════════════════╗
-<< ║                    COMANDOS MiniSO                               ║
+<< ║                    COMANDOS MiniOS                               ║
 << ╠══════════════╦═══════════════════════════════════════════════════╣
 << ║ SHELL BASE   ║                                                   ║
 << ║ help         ║ Muestra esta ayuda                                ║
@@ -84,7 +84,7 @@ Usuario ejecuta: ./mini-os
 ### Flujo Principal
 ```
 >> exit
-<< [MiniSO] Cerrando shell. ¡Hasta luego!
+<< [MiniOS] Cerrando shell. ¡Hasta luego!
 [Retorna al terminal del SO con código 0]
 ```
 
@@ -96,7 +96,7 @@ Usuario ejecuta: ./mini-os
 << ADVERTENCIA: Hay 1 proceso(s) en background activos.
 << ¿Desea terminarlos y salir? [s/N]: s
 << [Procesos terminados]
-<< [MiniSO] Cerrando shell. ¡Hasta luego!
+<< [MiniOS] Cerrando shell. ¡Hasta luego!
 ```
 
 ---
@@ -111,7 +111,7 @@ Usuario ejecuta: ./mini-os
 ### Flujo Principal
 ```
 [El usuario presiona Ctrl+D]
-<< [MiniSO] EOF recibido. Cerrando...
+<< [MiniOS] EOF recibido. Cerrando...
 [Retorna al terminal del SO]
 ```
 
