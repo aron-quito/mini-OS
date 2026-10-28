@@ -51,8 +51,8 @@ void shell_loop(void) {
             break; // EOF (Ctrl+D)
         }
 
-        // Eliminar salto de línea
-        line[strcspn(line, "\n")] = '\0';
+        // Eliminar salto de línea (\r y \n)
+        line[strcspn(line, "\r\n")] = '\0';
 
         if (strlen(line) == 0) {
             continue;
