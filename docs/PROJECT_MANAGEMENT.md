@@ -52,6 +52,23 @@
 
 ---
 
+## 📌 Organización en Linear: Módulos como Proyectos y Milestones
+
+En Linear, cada **Módulo de desarrollo representa un Proyecto independiente** con sus propios **Milestones** internos y dependencias de bloqueo (*blocks / is blocked by*) inter-módulos:
+
+| Proyecto en Linear (Módulo) | Enlace Directo | Milestones Contenidos | Rango de Issues |
+|:---|:---:|:---|:---:|
+| **Módulo 0 — Shell & Infraestructura Base** | [Abrir en Linear](https://linear.app/mini-os/project/modulo-0-shell-and-infraestructura-base-1ccee9d2d136) | • Milestone 1: Infraestructura Base y Shell CLI | SIS-38 a SIS-41 (Issues 1.1 – 1.4) |
+| **Módulo 1 — Gestión de Procesos y Concurrencia** | [Abrir en Linear](https://linear.app/mini-os/project/modulo-1-gestion-de-procesos-y-concurrencia-065f1df3875f) | • Milestone 2: Gestión de Procesos y Concurrencia | SIS-42 a SIS-45 (Issues 2.1 – 2.4) |
+| **Módulo 2 — Gestión de Hilos (Pthreads & Concurrencia)** | [Abrir en Linear](https://linear.app/mini-os/project/modulo-2-gestion-de-hilos-pthreads-and-concurrencia-23f045c2dfc6) | • Milestone 7: Productor-Consumidor con pthread | SIS-60 a SIS-63 (Issues 7.1 – 7.4) |
+| **Módulo 3 — Gestión de Memoria (First-Fit & Paginación)** | [Abrir en Linear](https://linear.app/mini-os/project/modulo-3-gestion-de-memoria-first-fit-and-paginacion-ecd61b22985f) | • Milestone 3: Configuración de RAM, Presets y First-Fit<br>• Milestone 4: Cola de Espera por RAM Insuficiente (mem_queue)<br>• Milestone 5: Paginación y Traducción de Direcciones<br>• Milestone 6: Visualizador Terminal y Switch Seguro de Esquema | SIS-46 a SIS-59 (Issues 3.1 – 6.3) |
+| **Integración Global & Entregables Finales** | [Abrir en Linear](https://linear.app/mini-os/project/integracion-global-and-entregables-finales-f0ff3c24b272) | • Milestone 8: Integración Global, Señales y Hardening<br>• Milestone 9: Entregables Académicos Finales (Informe, README, Video) | SIS-64 a SIS-70 (Issues 8.1 – 9.3) |
+
+> 💡 **Nota de Dependencias:** Las dependencias entre tareas pertenecientes a diferentes proyectos (ej. Módulo 3 esperando por el parser de Módulo 0, o Integración esperando por Módulo 1, 2 y 3) están completamente enlazadas mediante relaciones nativas `blocks` / `blocked by` en Linear.
+
+
+---
+
 ## 🚩 MILESTONE 1: Infraestructura Base — Shell CLI y Repositorio
 
 > **Módulo:** Shell / CLI Base

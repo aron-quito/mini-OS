@@ -1,0 +1,266 @@
+[
+  {
+    "id": "1.1",
+    "project": "Módulo 0 — Shell & Infraestructura Base",
+    "milestone": "Milestone 1: Infraestructura Base y Shell CLI",
+    "title": "Issue 1.1: Inicializar repositorio Git y estructura de carpetas",
+    "description": "Configurar la estructura modular de directorios (src, include, docs, tests), .gitignore y Makefile base con flags de compilación C11.",
+    "blocked_by": []
+  },
+  {
+    "id": "1.2",
+    "project": "Módulo 0 — Shell & Infraestructura Base",
+    "milestone": "Milestone 1: Infraestructura Base y Shell CLI",
+    "title": "Issue 1.2: Implementar el ciclo principal del shell (REPL)",
+    "description": "Desarrollar el bucle interactivo de lectura, evaluación e impresión con fgets y soporte para EOF (Ctrl+D) mostrando el prompt miniOS>.",
+    "blocked_by": ["1.1"]
+  },
+  {
+    "id": "1.3",
+    "project": "Módulo 0 — Shell & Infraestructura Base",
+    "milestone": "Milestone 1: Infraestructura Base y Shell CLI",
+    "title": "Issue 1.3: Parser y tokenizador de línea de comandos",
+    "description": "Parsear la cadena de entrada en tokens (argv) manejando múltiples espacios y detectando el operador de background '&'.",
+    "blocked_by": ["1.2"]
+  },
+  {
+    "id": "1.4",
+    "project": "Módulo 0 — Shell & Infraestructura Base",
+    "milestone": "Milestone 1: Infraestructura Base y Shell CLI",
+    "title": "Issue 1.4: Dispatcher central y comandos built-in básicos",
+    "description": "Enrutador de comandos para diferenciar built-ins (help, clear, exit) de comandos ejecutables del sistema operativo.",
+    "blocked_by": ["1.3"]
+  },
+  {
+    "id": "2.1",
+    "project": "Módulo 1 — Gestión de Procesos y Concurrencia",
+    "milestone": "Milestone 2: Gestión de Procesos y Concurrencia",
+    "title": "Issue 2.1: Ejecución foreground con fork, execvp y waitpid",
+    "description": "Ejecución síncrona de comandos externos bloqueando el shell padre hasta recibir el código de salida del hijo.",
+    "blocked_by": ["1.4"]
+  },
+  {
+    "id": "2.2",
+    "project": "Módulo 1 — Gestión de Procesos y Concurrencia",
+    "milestone": "Milestone 2: Gestión de Procesos y Concurrencia",
+    "title": "Issue 2.2: Ejecución en background con operador & y reserva de memoria",
+    "description": "Lanzamiento asíncrono con validación previa de espacio en RAM, alerta de saturación y auto-liberación al finalizar con SIGCHLD.",
+    "blocked_by": ["2.1"]
+  },
+  {
+    "id": "2.3",
+    "project": "Módulo 1 — Gestión de Procesos y Concurrencia",
+    "milestone": "Milestone 2: Gestión de Procesos y Concurrencia",
+    "title": "Issue 2.3: Tabla de control de procesos en background",
+    "description": "Estructura bg_table para registrar PID, PPID, comando, memoria asignada en KB y estado en tiempo real.",
+    "blocked_by": ["2.2"]
+  },
+  {
+    "id": "2.4",
+    "project": "Módulo 1 — Gestión de Procesos y Concurrencia",
+    "milestone": "Milestone 2: Gestión de Procesos y Concurrencia",
+    "title": "Issue 2.4: Comando ps-mini — Visualizador de procesos de la sesión",
+    "description": "Comando interno para listar procesos de la sesión en tabla con columnas de PID, PPID, comando, RAM (KB) y estado.",
+    "blocked_by": ["2.3"]
+  },
+  {
+    "id": "3.1",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 3: Configuración de RAM, Presets y First-Fit",
+    "title": "Issue 3.1: Estructuras de datos de memoria y lista de bloques",
+    "description": "Modelar la memoria física simulada como una lista enlazada ordenada por start_kb iniciando con 1 bloque gigante libre.",
+    "blocked_by": ["1.4"]
+  },
+  {
+    "id": "3.2",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 3: Configuración de RAM, Presets y First-Fit",
+    "title": "Issue 3.2: Comandos de configuración de RAM y presets",
+    "description": "Comandos mem-config ram, page, frames y preset default, bloqueando comandos de paginación en modo FF.",
+    "blocked_by": ["3.1"]
+  },
+  {
+    "id": "3.3",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 3: Configuración de RAM, Presets y First-Fit",
+    "title": "Issue 3.3: Algoritmo First-Fit — Asignación contigua (ff_alloc) y split",
+    "description": "Asignación lineal buscando el primer bloque libre con capacidad suficiente y partición dinámica (split) del excedente.",
+    "blocked_by": ["3.2"]
+  },
+  {
+    "id": "3.4",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 3: Configuración de RAM, Presets y First-Fit",
+    "title": "Issue 3.4: Algoritmo First-Fit — Liberación y coalescencia de bloques",
+    "description": "Función ff_free para marcar bloques como libres y fusionar automáticamente bloques contiguos adyacentes (merging).",
+    "blocked_by": ["3.3"]
+  },
+  {
+    "id": "4.1",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 4: Cola de Espera por RAM Insuficiente (mem_queue)",
+    "title": "Issue 4.1: Estructura de cola FIFO para procesos en espera",
+    "description": "Implementación de la cola enlazada mem_queue con operaciones enqueue, dequeue, peek y cálculo de tiempo en espera.",
+    "blocked_by": ["3.1"]
+  },
+  {
+    "id": "4.2",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 4: Cola de Espera por RAM Insuficiente (mem_queue)",
+    "title": "Issue 4.2: Encolado automático ante memoria RAM insuficiente",
+    "description": "Integración en mem-alloc y comandos en background para retener procesos en cola al detectar fragmentación o RAM llena.",
+    "blocked_by": ["3.3", "4.1", "2.2"]
+  },
+  {
+    "id": "4.3",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 4: Cola de Espera por RAM Insuficiente (mem_queue)",
+    "title": "Issue 4.3: Comando mem-queue — Inspección de procesos en espera",
+    "description": "Visualizador tabular de procesos esperando memoria con posición FIFO, PID, tamaño solicitado y temporizador activo.",
+    "blocked_by": ["4.2"]
+  },
+  {
+    "id": "4.4",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 4: Cola de Espera por RAM Insuficiente (mem_queue)",
+    "title": "Issue 4.4: Desencolado reactivo y asignación automática tras liberación",
+    "description": "Activación automática al ejecutar mem-free o al cosechar procesos terminados para asignar y despachar procesos en espera.",
+    "blocked_by": ["3.4", "4.3"]
+  },
+  {
+    "id": "5.1",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 5: Paginación y Traducción de Direcciones",
+    "title": "Issue 5.1: Estructuras de paginación y asignación de marcos",
+    "description": "Implementación de FrameTable global y PageTable por proceso para asignación de marcos físicos no contiguos (pag_alloc).",
+    "blocked_by": ["3.2", "4.1"]
+  },
+  {
+    "id": "5.2",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 5: Paginación y Traducción de Direcciones",
+    "title": "Issue 5.2: Traducción de dirección lógica a física (mem-translate)",
+    "description": "Comando para calcular página, desplazamiento y marco físico según la fórmula matemática, validando modo activo pag.",
+    "blocked_by": ["5.1"]
+  },
+  {
+    "id": "5.3",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 5: Paginación y Traducción de Direcciones",
+    "title": "Issue 5.3: Visualizador de tabla de páginas y liberación de marcos",
+    "description": "Comando mem-page-table para inspeccionar páginas y marcos del proceso, y pag_free para devolver marcos al pool.",
+    "blocked_by": ["5.2"]
+  },
+  {
+    "id": "6.1",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 6: Visualizador Terminal y Switch Seguro de Esquema",
+    "title": "Issue 6.1: Visualizador gráfico interactivo de RAM en terminal (mem-view)",
+    "description": "Gráfico en terminal de la memoria adaptado al algoritmo activo (bloques en First-Fit, cuadrícula en Paginación) y estado de cola.",
+    "blocked_by": ["3.4", "5.3"]
+  },
+  {
+    "id": "6.2",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 6: Visualizador Terminal y Switch Seguro de Esquema",
+    "title": "Issue 6.2: Comando switch-ram con capa de seguridad interactiva",
+    "description": "Transición en caliente entre algoritmos (ff y pag) con prompt interactivo de confirmación [s/N] si hay procesos activos o en cola.",
+    "blocked_by": ["6.1", "4.4"]
+  },
+  {
+    "id": "6.3",
+    "project": "Módulo 3 — Gestión de Memoria (First-Fit & Paginación)",
+    "milestone": "Milestone 6: Visualizador Terminal y Switch Seguro de Esquema",
+    "title": "Issue 6.3: Transición atómica de estructuras y reset limpio",
+    "description": "Rutina para purgar colas y liberar memoria residual al conmutar algoritmos, restableciendo la RAM limpia sin memory leaks.",
+    "blocked_by": ["6.2"]
+  },
+  {
+    "id": "7.1",
+    "project": "Módulo 2 — Gestión de Hilos (Pthreads & Concurrencia)",
+    "milestone": "Milestone 7: Productor-Consumidor con pthread",
+    "title": "Issue 7.1: Búfer circular compartido thread-safe",
+    "description": "Búfer de capacidad limitada protegido por pthread_mutex_t y variables de condición not_full y not_empty.",
+    "blocked_by": ["1.4"]
+  },
+  {
+    "id": "7.2",
+    "project": "Módulo 2 — Gestión de Hilos (Pthreads & Concurrencia)",
+    "milestone": "Milestone 7: Productor-Consumidor con pthread",
+    "title": "Issue 7.2: Implementación de hilos productores y consumidores",
+    "description": "Rutinas concurrentes con pthread_create para al menos 2 productores y 2 consumidores con retardo simulado y mensajes en tiempo real.",
+    "blocked_by": ["7.1"]
+  },
+  {
+    "id": "7.3",
+    "project": "Módulo 2 — Gestión de Hilos (Pthreads & Concurrencia)",
+    "milestone": "Milestone 7: Productor-Consumidor con pthread",
+    "title": "Issue 7.3: Comando thread-demo — Demostración concurrente",
+    "description": "Comando para parametrizar cantidad de productores, consumidores e ítems, ejecutando la sesión y esperando con pthread_join.",
+    "blocked_by": ["7.2"]
+  },
+  {
+    "id": "7.4",
+    "project": "Módulo 2 — Gestión de Hilos (Pthreads & Concurrencia)",
+    "milestone": "Milestone 7: Productor-Consumidor con pthread",
+    "title": "Issue 7.4: Comando thread-stats — Integridad y 0 pérdidas de datos",
+    "description": "Muestra estadísticas de la última sesión de hilos certificando que ítems producidos son iguales a ítems consumidos sin pérdidas.",
+    "blocked_by": ["7.3"]
+  },
+  {
+    "id": "8.1",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 8: Integración Global, Señales y Hardening",
+    "title": "Issue 8.1: Manejadores de señales del sistema con sigaction",
+    "description": "Configuración de SIGCHLD para cosechar procesos background sin dejar zombies y SIGINT (Ctrl+C) para no matar el shell.",
+    "blocked_by": ["1.4", "2.2", "4.4"]
+  },
+  {
+    "id": "8.2",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 8: Integración Global, Señales y Hardening",
+    "title": "Issue 8.2: Validación estricta de entradas y mensajes de error",
+    "description": "Prevención de Segmentation Fault ante argumentos vacíos, negativos o inválidos en todos los comandos del sistema.",
+    "blocked_by": ["1.4", "2.1", "3.2", "7.3"]
+  },
+  {
+    "id": "8.3",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 8: Integración Global, Señales y Hardening",
+    "title": "Issue 8.3: Batería de pruebas integradas y casos de prueba",
+    "description": "Script de pruebas automatizadas que ejecuta los escenarios de prueba documentados en docs/use-cases/.",
+    "blocked_by": ["2.4", "6.3", "7.4", "8.1", "8.2"]
+  },
+  {
+    "id": "8.4",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 8: Integración Global, Señales y Hardening",
+    "title": "Issue 8.4: Verificación dinámica de fugas con Valgrind y Helgrind",
+    "description": "Auditoría de memoria con Valgrind y análisis de condiciones de carrera con Helgrind para certificar 0 fugas y 0 errores.",
+    "blocked_by": ["8.3"]
+  },
+  {
+    "id": "9.1",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 9: Entregables Académicos Finales (Informe, README, Video)",
+    "title": "Issue 9.1: README.md integral y guía de usuario",
+    "description": "Documentación exhaustiva en GitHub con requisitos, instrucciones de compilación make, manual de comandos y capturas.",
+    "blocked_by": ["8.4"]
+  },
+  {
+    "id": "9.2",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 9: Entregables Académicos Finales (Informe, README, Video)",
+    "title": "Issue 9.2: Informe técnico formal (6 a 10 páginas)",
+    "description": "Redacción del informe formal en Google Docs cubriendo arquitectura, decisiones de diseño, algoritmos, pruebas y conclusiones.",
+    "blocked_by": ["8.4"]
+  },
+  {
+    "id": "9.3",
+    "project": "Integración Global & Entregables Finales",
+    "milestone": "Milestone 9: Entregables Académicos Finales (Informe, README, Video)",
+    "title": "Issue 9.3: Video demostrativo guiado (<= 8 minutos)",
+    "description": "Grabación de video de máximo 8 minutos demostrando compilación, ejecución de los 3 módulos y explicación técnica del código.",
+    "blocked_by": ["8.4", "9.1", "9.2"]
+  }
+]
