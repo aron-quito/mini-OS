@@ -1,66 +1,31 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stddef.h>
 #include "mem_queue.h"
 
-static mem_queue_node_t *s_head = NULL;
-static mem_queue_node_t *s_tail = NULL;
-static int s_count = 0;
-
 void mem_queue_init(void) {
-    mem_queue_clear();
+    // Stub base — Se implementará en Milestone 4 (SIS-50)
 }
 
 int mem_queue_enqueue(int pid, int size_kb, const char *command) {
-    mem_queue_node_t *node = (mem_queue_node_t *)malloc(sizeof(mem_queue_node_t));
-    if (!node) return -1;
-
-    node->pid = pid;
-    node->size_kb = size_kb;
-    strncpy(node->command, command ? command : "unknown", sizeof(node->command) - 1);
-    node->command[sizeof(node->command) - 1] = '\0';
-    node->enqueued_at = time(NULL);
-    node->next = NULL;
-
-    if (!s_tail) {
-        s_head = s_tail = node;
-    } else {
-        s_tail->next = node;
-        s_tail = node;
-    }
-    s_count++;
+    (void)pid;
+    (void)size_kb;
+    (void)command;
     return 0;
 }
 
 mem_queue_node_t *mem_queue_dequeue(void) {
-    if (!s_head) return NULL;
-
-    mem_queue_node_t *node = s_head;
-    s_head = s_head->next;
-    if (!s_head) s_tail = NULL;
-    s_count--;
-    return node;
+    return NULL;
 }
 
 mem_queue_node_t *mem_queue_peek(void) {
-    return s_head;
-}
-
-int mem_queue_length(void) {
-    return s_count;
+    return NULL;
 }
 
 void mem_queue_print(void) {
-    printf("  [Cola de espera RAM]: %d proceso(s) en espera.\n", s_count);
+}
+
+int mem_queue_length(void) {
+    return 0;
 }
 
 void mem_queue_clear(void) {
-    mem_queue_node_t *curr = s_head;
-    while (curr) {
-        mem_queue_node_t *tmp = curr->next;
-        free(curr);
-        curr = tmp;
-    }
-    s_head = s_tail = NULL;
-    s_count = 0;
 }
