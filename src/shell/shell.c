@@ -9,6 +9,15 @@ void shell_init(void) {
   // resetear las banderas de la shell, etc.
 }
 
+int shell_dispatch(char *line) {
+  (void)line;
+  if (strcmp(line, "hola mundo") == 0) {
+    printf("[INFO] Hola mundo\n");
+  }
+  // Stub base — Se implementará en la Issue 1.4 (SIS-41)
+  return 0;
+}
+
 void shell_loop(void) {
   // Stub base de Issue 1.1 — Se implementará en detalle en la Issue 1.2
   // (SIS-39)
@@ -37,10 +46,4 @@ void shell_loop(void) {
       continue; // Enter vacío
     shell_dispatch(line);
   }
-}
-
-int shell_dispatch(char *line) {
-  (void)line;
-  // Stub base — Se implementará en la Issue 1.4 (SIS-41)
-  return 0;
 }
