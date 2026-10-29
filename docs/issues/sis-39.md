@@ -4,7 +4,7 @@
 > **Proyecto / Módulo:** `Módulo 0 — Shell & Infraestructura Base`  
 > **Alcance Estricto:** Implementación exclusiva del ciclo REPL en [src/shell/shell.c](file:///Users/aron/githubRepo/mini-OS/src/shell/shell.c)  
 > **Estado:** Listo para Implementación (`Todo`) | **Etapa Git:** Commit 1.2 — `feat(shell): implement interactive REPL loop (Issue 1.2 / SIS-39)`  
-> **🔗 Depende de:** [SIS-38](file:///Users/aron/githubRepo/mini-OS/docs/PROJECT_MANAGEMENT.md#--issue-11-inicializar-repositorio-git-y-estructura-de-carpetas) (*Issue 1.1: Inicializar repositorio Git y estructura de carpetas*)  
+> **🔗 Depende de:** [SIS-38](sis-38.md) (*Issue 1.1: Inicializar repositorio Git y estructura de carpetas*)  
 > **🔒 Bloquea a:** [SIS-40](file:///Users/aron/githubRepo/mini-OS/docs/PROJECT_MANAGEMENT.md#--issue-13-parser-y-tokenizador-de-l%C3%ADnea-de-comandos) (*Issue 1.3: Parser y tokenizador de línea de comandos*)  
 
 ---

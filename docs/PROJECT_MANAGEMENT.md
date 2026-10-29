@@ -110,10 +110,11 @@ mini-OS/
 ```
 
 **Criterios de aceptación:**
-- [ ] Repositorio Git inicializado con branch principal `main`.
-- [ ] `.gitignore` filtra `*.o`, `mini-os`, temporales y reportes de Valgrind.
-- [ ] `Makefile` con reglas `all`, `clean`, `run` y flags estrictos (`-Wall -Wextra -std=c11 -lpthread`).
+- [x] Repositorio Git inicializado con branch principal `main`.
+- [x] `.gitignore` filtra `*.o`, `mini-os`, temporales y reportes de Valgrind.
+- [x] `Makefile` con reglas `all`, `clean`, `run` y flags estrictos (`-Wall -Wextra -std=c11 -lpthread`).
 
+> 📄 **Especificación detallada:** [docs/issues/sis-38.md](issues/sis-38.md)  
 **🔗 Depende de:** — *(Punto de partida)*
 
 ---
@@ -144,6 +145,7 @@ void shell_loop(void) {
 - [ ] Manejo correcto de EOF (`Ctrl+D`) sin bucles infinitos.
 - [ ] Comando `exit` finaliza la aplicación con retorno 0.
 
+> 📄 **Especificación detallada:** [docs/issues/sis-39.md](issues/sis-39.md)  
 **🔗 Depende de:** Issue 1.1
 
 ---
