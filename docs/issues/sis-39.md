@@ -115,13 +115,16 @@ int shell_dispatch(char *line) {
 
 ## 5. Casos de Prueba y Criterios de Aceptación
 
-| ID | Prueba | Entrada | Resultado Esperado | Criterio |
+> ⚠️ **Estado Actual de la Suite:** **Pendiente de Implementación (`Todo`)**.  
+> El código en [src/shell/shell.c](file:///Users/aron/githubRepo/mini-OS/src/shell/shell.c) actualmente contiene el stub base de la Issue 1.1 (`SIS-38`). Los siguientes casos de prueba definen los criterios que deberán ejecutarse y aprobarse durante la implementación de esta tarea.
+
+| ID | Caso de Prueba | Entrada | Resultado Esperado | Estado / Validación |
 |:---:|:---|:---|:---|:---:|
-| **CP-01** | Prompt interactivo | `./mini-os` | Muestra `miniOS> ` en pantalla esperando entrada. | ✅ Aprobado |
-| **CP-02** | Pulsaciones de Enter | Pulsar `Enter` varias veces | El prompt vuelve a aparecer sin errores ni saltos extraños. | ✅ Aprobado |
-| **CP-03** | Comando `exit` | Escribir `exit` | Imprime mensaje de despedida y termina con código `0` (`echo $?` da 0). | ✅ Aprobado |
-| **CP-04** | Atajo `Ctrl+D` (EOF) | Pulsar `Ctrl+D` en prompt | Imprime `[INFO] Saliendo del shell...` y termina con código `0`. | ✅ Aprobado |
-| **CP-05** | Texto genérico | `hola mundo` | Muestra `[miniOS] Entrada recibida: 'hola mundo'` y vuelve a `miniOS> `. | ✅ Aprobado |
+| **CP-01** | Prompt interactivo continuo | `./mini-os` | Mantiene el prompt `miniOS> ` en pantalla en espera interactiva continua. | ⏳ Por probar *(No implementado en stub)* |
+| **CP-02** | Pulsaciones de Enter | Pulsar `Enter` varias veces | Vuelve a imprimir el prompt sin saltos anómalos ignorando líneas vacías. | ⏳ Por probar *(No implementado en stub)* |
+| **CP-03** | Comando de salida `exit` | Escribir `exit` | Imprime despedida y finaliza la sesión con código de salida `0` (`echo $?` retorna 0). | ⏳ Por probar *(No implementado en stub)* |
+| **CP-04** | Atajo de fin de archivo (`Ctrl+D` / EOF) | Enviar EOF (`Ctrl+D`) | `fgets` detecta `NULL`, imprime mensaje informativo y sale limpiamente con código `0`. | ⏳ Por probar *(No implementado en stub)* |
+| **CP-05** | Recepción de texto genérico | `hola mundo` | Muestra `[miniOS] Entrada recibida: 'hola mundo'` y reitera el prompt `miniOS> `. | ⏳ Por probar *(No implementado en stub)* |
 
 ---
 
