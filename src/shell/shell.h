@@ -1,8 +1,8 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#define MAX_LINE 1024
-#define MAX_ARGS 64
+#define MAX_LINE 1024 // maxima cantidad de caracteres por linea
+#define MAX_ARGS 64   // maxima cantidad de argumentos por linea
 
 /**
  * @brief Inicializa el subsistema del shell.
