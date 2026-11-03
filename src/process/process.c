@@ -51,10 +51,12 @@ int process_execute_fg(char **argv) {
         /* =================================================================
          * PROCESO HIJO (pid == 0)
          * =================================================================
-         * execvp busca el ejecutable en el PATH del sistema.
-         * Si tiene éxito, este código NUNCA continúa porque el proceso hijo
-         * se transforma por completo en el nuevo programa.
+         * Informa su creación mostrando su PID y el PPID de miniOS.
+         * Se deja un salto de línea para diferenciarlo de la salida del comando.
          */
+        printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n\n", getpid(), getppid());
+        fflush(stdout);
+
         if (execvp(argv[0], argv) < 0) {
             if (errno == ENOENT) {
                 fprintf(stderr, "miniOS: comando no encontrado: '%s'\n", argv[0]);
@@ -76,13 +78,18 @@ int process_execute_fg(char **argv) {
             return -1;
         }
 
+        /* Salto visual corto para separar la salida del hijo del informe final del padre */
+        printf("\n");
+
         /* Inspeccionar cómo terminó el hijo */
         if (WIFEXITED(status)) {
-            /* Terminó normalmente vía exit() o return en main */
-            return WEXITSTATUS(status);
+            int exit_code = WEXITSTATUS(status);
+            printf("[PID %d] FINALIZADO | Código de salida: %d\n", pid, exit_code);
+            return exit_code;
         } else if (WIFSIGNALED(status)) {
-            /* Terminó abruptamente por una señal (ej: Ctrl+C / SIGINT) */
-            return 128 + WTERMSIG(status);
+            int term_sig = WTERMSIG(status);
+            printf("[PID %d] TERMINADO POR SEÑAL | Señal: %d\n", pid, term_sig);
+            return 128 + term_sig;
         }
     }
 
