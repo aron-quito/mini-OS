@@ -55,30 +55,65 @@ void shell_init(void) {
  * ----------------------------------------------------------------------- */
 
 /**
- * help — Lista todos los comandos disponibles agrupados por módulo.
+ * help — Lista todos los comandos disponibles agrupados por módulo
+ * o muestra la ayuda específica si se especifica un comando.
  */
 static int builtin_help(Command *cmd) {
-    (void)cmd; /* no necesita argumentos por ahora */
-    printf("\n");
-    printf("  miniOS — Shell Interactivo Educativo en C11\n");
-    printf("  ============================================\n\n");
-    printf("  [Shell / Built-ins]\n");
-    printf("    help              Muestra este mensaje de ayuda.\n");
-    printf("    clear             Limpia la pantalla de la terminal.\n");
-    printf("    exit              Finaliza la sesión del shell.\n");
-    printf("\n");
-    printf("  [Módulo 1 — Procesos]  (disponible en Issue 2.1+)\n");
-    printf("    <comando> [args]  Ejecuta un comando del sistema en primer plano.\n");
-    printf("    <comando> [args] & Ejecuta un comando en segundo plano.\n");
-    printf("    ps-mini           Lista los procesos activos de la sesión.\n");
-    printf("\n");
-    printf("  [Módulo 2 — Hilos]     (disponible en Issue 7.1+)\n");
-    printf("    thread-demo       Inicia la demo del productor-consumidor.\n");
-    printf("\n");
-    printf("  [Módulo 3 — Memoria]   (disponible en Issue 3.1+)\n");
-    printf("    mem-config        Configura el tamaño de la RAM simulada.\n");
-    printf("    mem-view          Muestra el estado actual de la memoria.\n");
-    printf("\n");
+    /* Si no se especificó un argumento, mostrar la ayuda general */
+    if (cmd->argc <= 1) {
+        printf("\n");
+        printf("  miniOS — Shell Interactivo Educativo en C11\n");
+        printf("  ============================================\n\n");
+        printf("  Uso: help [comando]\n\n");
+        printf("  [Shell / Built-ins]\n");
+        printf("    help              Muestra este mensaje de ayuda o el detalle de un comando.\n");
+        printf("    clear             Limpia la pantalla de la terminal.\n");
+        printf("    exit              Finaliza la sesión del shell.\n");
+        printf("\n");
+        printf("  [Módulo 1 — Procesos]  (disponible en Issue 2.1+)\n");
+        printf("    <comando> [args]  Ejecuta un comando del sistema en primer plano.\n");
+        printf("    <comando> [args] & Ejecuta un comando en segundo plano.\n");
+        printf("    ps-mini           Lista los procesos activos de la sesión.\n");
+        printf("\n");
+        printf("  [Módulo 2 — Hilos]     (disponible en Issue 7.1+)\n");
+        printf("    thread-demo       Inicia la demo del productor-consumidor.\n");
+        printf("\n");
+        printf("  [Módulo 3 — Memoria]   (disponible en Issue 3.1+)\n");
+        printf("    mem-config        Configura el tamaño de la RAM simulada.\n");
+        printf("    mem-view          Muestra el estado actual de la memoria.\n");
+        printf("\n");
+        return 0;
+    }
+
+    /* Ayuda detallada para un comando específico */
+    const char *topic = cmd->argv[1];
+
+    if (strcmp(topic, "help") == 0) {
+        printf("\n  help [comando]\n");
+        printf("    Muestra información de ayuda general o el detalle de un comando específico.\n\n");
+    } else if (strcmp(topic, "clear") == 0) {
+        printf("\n  clear\n");
+        printf("    Limpia el contenido de la pantalla de la terminal mediante secuencias ANSI.\n\n");
+    } else if (strcmp(topic, "exit") == 0) {
+        printf("\n  exit [código]\n");
+        printf("    Finaliza la sesión de miniOS. Opcionalmente acepta un código numérico de salida.\n\n");
+    } else if (strcmp(topic, "ps-mini") == 0) {
+        printf("\n  ps-mini\n");
+        printf("    Muestra la lista de procesos activos y en segundo plano gestionados por el shell.\n\n");
+    } else if (strcmp(topic, "thread-demo") == 0) {
+        printf("\n  thread-demo\n");
+        printf("    Ejecuta la simulación interactiva del problema clásico Productor-Consumidor.\n\n");
+    } else if (strcmp(topic, "mem-config") == 0) {
+        printf("\n  mem-config <tamaño_kb>\n");
+        printf("    Configura el tamaño de la memoria RAM física simulada en kilobytes.\n\n");
+    } else if (strcmp(topic, "mem-view") == 0) {
+        printf("\n  mem-view\n");
+        printf("    Visualiza el mapa de asignación de marcos/páginas y fragmentación de memoria.\n\n");
+    } else {
+        fprintf(stderr, "miniOS: help: no hay entrada de ayuda para '%s'. Usa 'help' para ver la lista.\n", topic);
+        return 1;
+    }
+
     return 0;
 }
 
@@ -97,9 +132,26 @@ static int builtin_clear(Command *cmd) {
  *
  * Devuelve un código especial (-1) que shell_dispatch reenvía a
  * shell_loop para que sepa que debe romper el bucle REPL.
+ * Soporta un código numérico opcional (ej: exit 0). Si recibe texto
+ * o argumentos inválidos, emite un error y no finaliza la sesión.
  */
 static int builtin_exit(Command *cmd) {
-    (void)cmd;
+    if (cmd->argc > 2) {
+        fprintf(stderr, "miniOS: exit: demasiados argumentos\n");
+        return 1;
+    }
+
+    if (cmd->argc == 2) {
+        char *endptr = NULL;
+        long code = strtol(cmd->argv[1], &endptr, 10);
+        if (*endptr != '\0' || endptr == cmd->argv[1]) {
+            fprintf(stderr, "miniOS: exit: '%s': se requiere un argumento numérico\n", cmd->argv[1]);
+            return 1;
+        }
+        printf("[INFO] Finalizando miniOS con código %ld. ¡Hasta luego!\n", code);
+        return -1;
+    }
+
     printf("[INFO] Finalizando miniOS. ¡Hasta luego!\n");
     return -1; /* señal de salida para shell_loop */
 }
