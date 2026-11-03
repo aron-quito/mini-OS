@@ -43,14 +43,15 @@ static const BuiltinEntry BUILTINS[] = {
 #define BUILTIN_COUNT ((int)(sizeof(BUILTINS) / sizeof(BUILTINS[0])))
 
 /* -----------------------------------------------------------------------
- * shell_init — Inicialización del subsistema del shell
+ * shell_init — Inicialización de los subsistemas del sistema
  *
- * Por ahora vacía; en issues posteriores inicializará la tabla de
- * procesos en background, la configuración de RAM, etc.
+ * Issue 3.1 (SIS-46): Inicializa la memoria física simulada con 128 KB
+ * bajo el esquema de particionamiento dinámico First-Fit y muestra el
+ * estado del bloque libre inicial.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
-  /* Inicializar subsistema de memoria para la Issue 3.1 */
-  memory_init(1024, MEM_ALGO_FIRST_FIT);
+  /* Inicializar subsistema de memoria para la Issue 3.1 (SIS-46) */
+  memory_init(128, MEM_ALGO_FIRST_FIT);
 
   if (mem_state.block_list != NULL) {
     printf("[miniOS Kernel] Memoria inicializada: %d KB RAM | Bloque inicial: "
