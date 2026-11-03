@@ -8,6 +8,7 @@
 
 #include "shell.h"
 #include "parser.h"
+#include "../process/process.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -190,12 +191,12 @@ int shell_dispatch(char *line) {
 
     /*
      * Comando no reconocido como built-in.
-     * En Issue 2.1 (Módulo 1: Procesos) esta sección será reemplazada
-     * por una llamada a execute_foreground() o execute_background().
+     * Issue 2.1 (Módulo 1: Procesos): Ejecución externa síncrona en foreground.
+     * (En Issue 2.2 se evaluará cmd.is_background para bifurcar a process_execute_bg).
      */
-    fprintf(stderr, "miniOS: comando no encontrado: '%s'\n", cmd.argv[0]);
+    int result = process_execute_fg(cmd.argv);
     free_command(&cmd);
-    return 1;
+    return result;
 }
 
 /* -----------------------------------------------------------------------
