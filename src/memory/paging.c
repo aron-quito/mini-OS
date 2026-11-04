@@ -405,7 +405,7 @@ int paging_translate(int pid, int logical_address, int *out_physical_address) {
 }
 
 void paging_view(void) {
-    // Stub base — Se implementará en Issue 5.3 / 6.1
+    render_mem_view_pag();
 }
 
 void paging_cleanup(void) {

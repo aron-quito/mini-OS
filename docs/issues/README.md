@@ -38,6 +38,8 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 | **SIS-54** | 5.1 | Estructuras de paginación y asignación de marcos (`pag_alloc`) | ✅ Completado (`Done`) | [SIS-54: Estructuras de Paginación y Asignación de Marcos](sis-54.md) |
 | **SIS-55** | 5.2 | Traducción de dirección lógica a física (`mem-translate`) | ✅ Completado (`Done`) | [SIS-55: Traducción de Dirección Lógica a Física](sis-55.md) |
 | **SIS-56** | 5.3 | Visualizador de tabla de páginas (`mem-page-table`) y `pag_free` | ✅ Completado (`Done`) | [SIS-56: Tabla de Páginas y Liberación de Marcos](sis-56.md) |
+| **SIS-57** | 6.1 | Visualizador gráfico interactivo de RAM (`mem-view` / `ram-view`) | ✅ Completado (`Done`) | [SIS-57: Visualizador Gráfico de RAM](sis-57.md) |
+| **SIS-58** | 6.2 | Comando `switch-ram` con capa de seguridad interactiva | ⏳ Siguiente (`Todo`) | *Próximamente* |
 
 ---
 

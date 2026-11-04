@@ -50,6 +50,7 @@ static int builtin_mem_free(Command *cmd);             /* Issue 4.2 (SIS-51) */
 static int builtin_mem_queue(Command *cmd);            /* Issue 4.3 (SIS-52) */
 static int builtin_mem_translate(Command *cmd);        /* Issue 5.2 (SIS-55) */
 static int builtin_mem_page_table(Command *cmd);       /* Issue 5.3 (SIS-56) */
+static int builtin_mem_view(Command *cmd);             /* Issue 6.1 (SIS-57) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
@@ -83,6 +84,9 @@ static const BuiltinEntry BUILTINS[] = {
     /* Issue 5.2 / 5.3 (SIS-55 / SIS-56): Comandos de Paginacion */
     { "mem-translate",  builtin_mem_translate  },
     { "mem-page-table", builtin_mem_page_table },
+    /* Issue 6.1 (SIS-57): Visualizador grafico interactivo de RAM y alias */
+    { "mem-view",       builtin_mem_view       },
+    { "ram-view",       builtin_mem_view       },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -163,7 +167,7 @@ static int builtin_help(Command *cmd) {
         printf("    mem-queue                Muestra la cola de procesos esperando RAM.\n");
         printf("    mem-translate <pid> <d>  Traduce una direccion logica a fisica (modo PAG).\n");
         printf("    mem-page-table <pid>     Visualiza la tabla de paginas del proceso (modo PAG).\n");
-        printf("    mem-view                 Muestra el mapa visual de bloques (Issue 6.1).\n");
+        printf("    mem-view / ram-view      Muestra el mapa visual de RAM y cola de espera.\n");
         printf("\n");
         return 0;
     }
@@ -301,9 +305,11 @@ static int builtin_help(Command *cmd) {
         printf("    y su direccion base fisica (marco_fisico * page_size_kb).\n\n");
         printf("    Ejemplo:\n");
         printf("      mem-page-table 42\n\n");
-    } else if (strcmp(topic, "mem-view") == 0) {
-        printf("\n  mem-view\n");
-        printf("    Visualiza el mapa de asignacion de marcos/paginas y fragmentacion de memoria.\n\n");
+    } else if (strcmp(topic, "mem-view") == 0 || strcmp(topic, "ram-view") == 0) {
+        printf("\n  mem-view (alias: ram-view)\n");
+        printf("    Renderiza en terminal el mapa grafico de la memoria RAM adaptado al\n");
+        printf("    algoritmo activo (tira de bloques en First-Fit o cuadricula de marcos\n");
+        printf("    en Paginacion), metricas de fragmentacion y estado de mem_queue.\n\n");
     } else {
         fprintf(stderr, "miniOS: help: no hay entrada de ayuda para '%s'. Usa 'help' para ver la lista.\n", topic);
         return 1;
@@ -638,6 +644,13 @@ static int builtin_mem_translate(Command *cmd) {
  * ----------------------------------------------------------------------- */
 static int builtin_mem_page_table(Command *cmd) {
     return cmd_mem_page_table(cmd->argc, cmd->argv);
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 6.1 (SIS-57) -- Handler de mem-view y ram-view
+ * ----------------------------------------------------------------------- */
+static int builtin_mem_view(Command *cmd) {
+    return cmd_mem_view(cmd->argc, cmd->argv);
 }
 
 /* -----------------------------------------------------------------------

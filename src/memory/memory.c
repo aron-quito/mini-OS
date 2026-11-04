@@ -201,7 +201,11 @@ int memory_reassign_pid(int old_pid, int new_pid) {
 }
 
 void memory_view(void) {
-    // Stub base — Se implementará en Issue 6.1 (comando mem-view)
+    if (memory_is_first_fit()) {
+        render_mem_view_ff();
+    } else {
+        render_mem_view_pag();
+    }
 }
 
 /**
@@ -523,4 +527,202 @@ void memory_status(void) {
 
     printf("  +================================================+\n");
     printf("\n");
+}
+
+/* =========================================================================
+ * Issue 6.1 (SIS-57): Visualizador gráfico interactivo de RAM (mem-view / ram-view)
+ * ========================================================================= */
+
+#define MEM_VIEW_INNER_WIDTH 66  /* Columnas visibles después de "║  " hasta "║" */
+
+/**
+ * @brief Calcula la longitud en caracteres visibles (code points UTF-8) de una cadena.
+ */
+static int utf8_visible_len(const char *s) {
+    int count = 0;
+    while (*s != '\0') {
+        if (((unsigned char)*s & 0xC0) != 0x80) {
+            count++;
+        }
+        s++;
+    }
+    return count;
+}
+
+/**
+ * @brief Imprime una fila dentro del recuadro Unicode de 68 columnas internas ("║  ...║")
+ *        calculando el relleno exacto según la cantidad de caracteres UTF-8 visibles.
+ */
+static void print_view_box_line(const char *text) {
+    int vis = utf8_visible_len(text);
+    int pad = MEM_VIEW_INNER_WIDTH - vis;
+    if (pad < 0) {
+        pad = 0;
+    }
+    printf("║  %s%*s║\n", text, pad, "");
+}
+
+/**
+ * @brief Formatea la línea de estado de la cola de espera (mem_queue) para el pie del mapa.
+ */
+static void format_queue_summary_line(char *out_buf, size_t buf_size) {
+    int q_len = mem_queue_length();
+    if (q_len <= 0) {
+        snprintf(out_buf, buf_size, "Cola de Espera RAM: Vacía (0 procesos esperando)");
+    } else {
+        mem_queue_node_t *front = mem_queue_peek();
+        if (front != NULL) {
+            snprintf(out_buf, buf_size,
+                     "Cola de Espera RAM: %d proceso(s) en espera (PID %d: %d KB)",
+                     q_len, front->pid, front->size_kb);
+        } else {
+            snprintf(out_buf, buf_size,
+                     "Cola de Espera RAM: %d proceso(s) en espera", q_len);
+        }
+    }
+}
+
+/**
+ * @brief Renderiza el mapa de memoria en modo First-Fit (Issue 6.1).
+ */
+void render_mem_view_ff(void) {
+    int used_kb     = 0;
+    int free_kb     = 0;
+    int free_blocks = 0;
+
+    printf("╔════════════════════════════════════════════════════════════════════╗\n");
+    printf("║                      MAPA DE MEMORIA RAM (MiniOS)                  ║\n");
+    printf("║                      Algoritmo Activo: FIRST-FIT                   ║\n");
+    printf("╠════════════════════════════════════════════════════════════════════╣\n");
+
+    char row_buf[256] = "";
+    const MemBlock *curr = mem_state.block_list;
+
+    while (curr != NULL) {
+        char token[64];
+        if (curr->status == BLOCK_USED) {
+            used_kb += curr->size_kb;
+            snprintf(token, sizeof(token), "[P%d: %dK | USED]", curr->process_id, curr->size_kb);
+        } else {
+            free_kb += curr->size_kb;
+            free_blocks++;
+            snprintf(token, sizeof(token), "[FREE: %dK]", curr->size_kb);
+        }
+
+        size_t cur_len = strlen(row_buf);
+        size_t tok_len = strlen(token);
+        /* Si agregar el token supera el ancho interno útil (64 cols), volcar línea actual */
+        if (cur_len > 0 && (cur_len + 1 + tok_len) > 64) {
+            print_view_box_line(row_buf);
+            row_buf[0] = '\0';
+            cur_len = 0;
+        }
+
+        if (cur_len > 0) {
+            strncat(row_buf, " ", sizeof(row_buf) - strlen(row_buf) - 1);
+        }
+        strncat(row_buf, token, sizeof(row_buf) - strlen(row_buf) - 1);
+
+        curr = curr->next;
+    }
+
+    if (row_buf[0] != '\0') {
+        print_view_box_line(row_buf);
+    } else {
+        print_view_box_line("[SIN BLOQUES]");
+    }
+
+    printf("╠════════════════════════════════════════════════════════════════════╣\n");
+
+    float pct_used = (mem_state.total_ram_kb > 0)
+        ? (100.0f * (float)used_kb / (float)mem_state.total_ram_kb) : 0.0f;
+    float pct_free = (mem_state.total_ram_kb > 0)
+        ? (100.0f - pct_used) : 0.0f;
+
+    char line_buf[256];
+    snprintf(line_buf, sizeof(line_buf),
+             "Total: %d KB | Usado: %d KB (%.1f%%) | Libre: %d KB (%.1f%%)",
+             mem_state.total_ram_kb, used_kb, pct_used, free_kb, pct_free);
+    print_view_box_line(line_buf);
+
+    snprintf(line_buf, sizeof(line_buf),
+             "Fragmentación Externa: %d bloques libres no contiguos (%d KB)",
+             free_blocks, free_kb);
+    print_view_box_line(line_buf);
+
+    format_queue_summary_line(line_buf, sizeof(line_buf));
+    print_view_box_line(line_buf);
+
+    printf("╚════════════════════════════════════════════════════════════════════╝\n");
+}
+
+/**
+ * @brief Renderiza el mapa de memoria en modo Paginación (Issue 6.1).
+ */
+void render_mem_view_pag(void) {
+    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    if (frame_table.total_frames <= 0 && mem_state.total_ram_kb > 0) {
+        paging_init(mem_state.total_ram_kb, page_kb);
+    }
+
+    int total_frames = frame_table.total_frames;
+    int free_frames  = frame_table.free_frames;
+    int used_frames  = total_frames - free_frames;
+    int used_kb      = used_frames * page_kb;
+    int free_kb      = free_frames * page_kb;
+
+    printf("╔════════════════════════════════════════════════════════════════════╗\n");
+    printf("║                      MAPA DE MEMORIA RAM (MiniOS)                  ║\n");
+    printf("║                      Algoritmo Activo: PAGINACIÓN                  ║\n");
+    printf("╠════════════════════════════════════════════════════════════════════╣\n");
+
+    char line_buf[256];
+    snprintf(line_buf, sizeof(line_buf),
+             "Marcos Físicos (Total: %d marcos de %d KB c/u):",
+             total_frames, page_kb);
+    print_view_box_line(line_buf);
+
+    /* Imprimir cuadrícula de marcos físicos (4 marcos por fila) */
+    for (int f = 0; f < total_frames; f += 4) {
+        char grid_row[256] = "";
+        for (int col = 0; col < 4 && (f + col) < total_frames; col++) {
+            int idx   = f + col;
+            int owner = frame_table.frame_owner[idx];
+            char cell[32];
+
+            if (owner == -1) {
+                snprintf(cell, sizeof(cell), "[M%02d: LIBRE]", idx);
+            } else {
+                snprintf(cell, sizeof(cell), "[M%02d: P%d]", idx, owner);
+            }
+
+            if (col > 0) {
+                strncat(grid_row, " ", sizeof(grid_row) - strlen(grid_row) - 1);
+            }
+            strncat(grid_row, cell, sizeof(grid_row) - strlen(grid_row) - 1);
+        }
+        print_view_box_line(grid_row);
+    }
+
+    printf("╠════════════════════════════════════════════════════════════════════╣\n");
+
+    snprintf(line_buf, sizeof(line_buf),
+             "Total: %d KB | Usado: %d KB (%d marcos) | Libre: %d KB (%d m)",
+             mem_state.total_ram_kb, used_kb, used_frames, free_kb, free_frames);
+    print_view_box_line(line_buf);
+
+    format_queue_summary_line(line_buf, sizeof(line_buf));
+    print_view_box_line(line_buf);
+
+    printf("╚════════════════════════════════════════════════════════════════════╝\n");
+}
+
+/**
+ * @brief Comando principal para mem-view y su alias ram-view (Issue 6.1).
+ */
+int cmd_mem_view(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    memory_view();
+    return 0;
 }
