@@ -35,11 +35,22 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 | **SIS-48** | 3.3 | Algoritmo First-Fit — Asignación contigua (`ff_alloc`) y split | ✅ Completado (`Done`) | [SIS-48: Asignación Contigua First-Fit y Split](sis-48.md) |
 | **SIS-49** | 3.4 | Algoritmo First-Fit — Liberación (`ff_free`) y coalescencia | ✅ Completado (`Done`) | [SIS-49: Liberación First-Fit y Coalescencia](sis-49.md) |
 | **SIS-50** | 4.1 | Estructura de cola FIFO para procesos en espera (`mem_queue`) | ✅ Completado (`Done`) | *Mergeado en PR #14* |
+| **SIS-53** | 4.4 | Desencolado reactivo y asignación automática (`mem_queue_process_waiting`) | ✅ Completado (`Done`) | [SIS-53: Desencolado Reactivo FIFO](sis-53.md) |
 | **SIS-54** | 5.1 | Estructuras de paginación y asignación de marcos (`pag_alloc`) | ✅ Completado (`Done`) | [SIS-54: Estructuras de Paginación y Asignación de Marcos](sis-54.md) |
 | **SIS-55** | 5.2 | Traducción de dirección lógica a física (`mem-translate`) | ✅ Completado (`Done`) | [SIS-55: Traducción de Dirección Lógica a Física](sis-55.md) |
 | **SIS-56** | 5.3 | Visualizador de tabla de páginas (`mem-page-table`) y `pag_free` | ✅ Completado (`Done`) | [SIS-56: Tabla de Páginas y Liberación de Marcos](sis-56.md) |
 | **SIS-57** | 6.1 | Visualizador gráfico interactivo de RAM (`mem-view` / `ram-view`) | ✅ Completado (`Done`) | [SIS-57: Visualizador Gráfico de RAM](sis-57.md) |
-| **SIS-58** | 6.2 | Comando `switch-ram` con capa de seguridad interactiva | ⏳ Siguiente (`Todo`) | *Próximamente* |
+| **SIS-58** | 6.2 | Comando `switch-ram` con capa de seguridad interactiva | ✅ Completado (`Done`) | [SIS-58: Comando switch-ram Interactivo](sis-58.md) |
+| **SIS-59** | 6.3 | Transición atómica y reset seguro de estructuras en `switch-ram` | ✅ Completado (`Done`) | [SIS-59: Transición Atómica en switch-ram](sis-59.md) |
+
+---
+
+## 📋 Índice de Issues de Hitos 8 y 9: Estabilización, Auditoría y Documentación Final
+
+| Identificador Linear | Issue | Título | Estado | Documento de Especificación |
+|:---:|:---:|:---|:---:|:---:|
+| **SIS-64..67** | 8.1–8.4 | Señales POSIX (`sigaction`), validaciones de entrada, pruebas integrales y Valgrind/ASan | ✅ Completado (`Done`) | [SIS-64..67: Estabilización y Auditoría](sis-64-67.md) |
+| **SIS-68..69** | 9.1–9.2 | `README.md` integral e Informe Técnico Formal (`docs/INFORME_TECNICO.md`) | ✅ Completado (`Done`) | [SIS-68..69: Documentación e Informe Técnico](sis-68-69.md) |
 
 ---
 
