@@ -1,12 +1,12 @@
 /*
- * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43)
+ * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43) + Issue 7.1 (SIS-60)
  *
- * Issue 1.2 (Aron):  Ciclo principal REPL (shell_loop).
- * Issue 1.4 (JSON):  Dispatcher central con tabla de built-ins.
- * Issue 2.2 (Aron):  Ejecución asíncrona en background con operador '&':
- *                    extracción del argumento de memoria (KB), bifurcación
- *                    fg/bg en shell_dispatch y cosecha de procesos terminados
- *                    antes de cada prompt para evitar solapamientos.
+ * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
+ * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento modular.
+ * Issue 2.2 (Aron): Ejecución asíncrona en background con operador '&':
+ *                   extracción del argumento de memoria (KB), bifurcación
+ *                   fg/bg en shell_dispatch y cosecha limpia antes del prompt.
+ * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos (thread-demo y thread-stats).
  */
 
 #include "shell.h"
@@ -46,9 +46,6 @@ static const BuiltinEntry BUILTINS[] = {
 
 /* -----------------------------------------------------------------------
  * shell_init — Inicialización del subsistema del shell
- *
- * Por ahora vacía; en issues posteriores inicializará la tabla de
- * procesos en background, la configuración de RAM, etc.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
     /* Inicializar subsistemas del shell */
@@ -70,20 +67,29 @@ static int builtin_help(Command *cmd) {
         printf("  miniOS — Shell Interactivo Educativo en C11\n");
         printf("  ============================================\n\n");
         printf("  Uso: help [comando]\n\n");
+
         printf("  [Shell / Built-ins]\n");
         printf("    help                    Muestra este mensaje de ayuda o el detalle de un comando.\n");
         printf("    clear                   Limpia la pantalla de la terminal.\n");
         printf("    exit                    Finaliza la sesión del shell.\n");
         printf("\n");
+
         printf("  [Módulo 1 — Procesos]  (Issue 2.1 / 2.2)\n");
         printf("    <cmd> [args]            Ejecuta un comando del sistema en primer plano.\n");
         printf("    <cmd> [args] [kb] &     Ejecuta en segundo plano con reserva de RAM simulada.\n");
         printf("    sleep <seg> [kb] &      Lanza una pausa asíncrona simulando proceso en background.\n");
         printf("    ps-mini                 Lista los procesos activos de la sesión.\n");
         printf("\n");
+
         printf("  [Módulo 2 — Hilos]     (disponible en Issue 7.1+)\n");
-        printf("    thread-demo             Inicia la demo del productor-consumidor.\n");
+        printf("    thread-demo [p] [c] [n]\n");
+        printf("                            Lanza la demo Productor-Consumidor con p productores,\n");
+        printf("                            c consumidores y n items por productor.\n");
+        printf("                            Valores por defecto: 2 productores, 2 consumidores, 10 items.\n");
+        printf("    thread-stats            Muestra estadísticas de la última sesión de hilos:\n");
+        printf("                            items producidos, consumidos, pérdidas y tiempo de ejecución.\n");
         printf("\n");
+
         printf("  [Módulo 3 — Memoria]   (disponible en Issue 3.1+)\n");
         printf("    mem-config              Configura el tamaño de la RAM simulada.\n");
         printf("    mem-view                Muestra el estado actual de la memoria.\n");
@@ -117,8 +123,23 @@ static int builtin_help(Command *cmd) {
         printf("\n  ps-mini\n");
         printf("    Muestra la lista de procesos activos y en segundo plano gestionados por el shell.\n\n");
     } else if (strcmp(topic, "thread-demo") == 0) {
-        printf("\n  thread-demo\n");
-        printf("    Ejecuta la simulación interactiva del problema clásico Productor-Consumidor.\n\n");
+        printf("\n  thread-demo [p] [c] [n]\n");
+        printf("    Ejecuta la simulación concurrente del problema clásico Productor-Consumidor.\n\n");
+        printf("    Parámetros opcionales (todos deben ser enteros positivos >= 2):\n");
+        printf("      p  Número de hilos productores  (defecto: 2)\n");
+        printf("      c  Número de hilos consumidores (defecto: 2)\n");
+        printf("      n  Items que genera cada productor (defecto: 10)\n\n");
+        printf("    Ejemplo:\n");
+        printf("      thread-demo 3 2 20   # 3 productores, 2 consumidores, 20 items c/u\n");
+        printf("      thread-demo          # ejecuta con valores por defecto\n\n");
+        printf("    Usa un búfer circular de 8 slots protegido con pthread_mutex_t y\n");
+        printf("    pthread_cond_t para garantizar 0 pérdidas de datos.\n\n");
+    } else if (strcmp(topic, "thread-stats") == 0) {
+        printf("\n  thread-stats\n");
+        printf("    Muestra las estadísticas de la última sesión de hilos ejecutada con thread-demo.\n\n");
+        printf("    Incluye: productores, consumidores, items producidos, items consumidos,\n");
+        printf("    pérdida de datos (siempre debe ser 0) y tiempo total de cómputo.\n\n");
+        printf("    Debe ejecutarse después de thread-demo; si no hay sesión previa muestra aviso.\n\n");
     } else if (strcmp(topic, "mem-config") == 0) {
         printf("\n  mem-config <tamaño_kb>\n");
         printf("    Configura el tamaño de la memoria RAM física simulada en kilobytes.\n\n");
