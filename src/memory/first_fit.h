@@ -28,6 +28,16 @@ int ff_free(int pid);
 int merge_adjacent_blocks(void);
 
 /**
+ * @brief Libera todos los nodos MemBlock de la lista enlazada y deja block_list en NULL (Issue 6.3).
+ */
+void ff_cleanup(void);
+
+/**
+ * @brief Inicializa First-Fit con un único bloque libre contiguo de total_ram_kb (Issue 6.3).
+ */
+void ff_init(void);
+
+/**
  * @brief Inicializa la memoria bajo el esquema First-Fit con 1 único bloque libre gigante.
  */
 void first_fit_init(int total_kb);
@@ -48,7 +58,7 @@ int first_fit_free(int pid);
 void first_fit_view(void);
 
 /**
- * @brief Libera la lista enlazada de bloques de memoria.
+ * @brief Libera la lista enlazada de bloques de memoria (alias de ff_cleanup).
  */
 void first_fit_cleanup(void);
 

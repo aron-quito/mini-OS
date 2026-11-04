@@ -66,9 +66,53 @@ int ff_alloc(int pid, int size_kb) {
     return -1;
 }
 
+/**
+ * @brief Recorre la lista de bloques, libera cada nodo MemBlock con free() y
+ *        deja mem_state.block_list = NULL para evitar punteros colgantes (Issue 6.3).
+ */
+void ff_cleanup(void) {
+    MemBlock *curr = mem_state.block_list;
+    while (curr != NULL) {
+        MemBlock *next = curr->next;
+        curr->next = NULL;
+        free(curr);
+        curr = next;
+    }
+    mem_state.block_list = NULL;
+    block_counter = 0;
+}
+
+/**
+ * @brief Reinicializa la memoria First-Fit purgando primero cualquier lista previa
+ *        y creando un único bloque inicial contiguo que abarca total_ram_kb (Issue 6.3).
+ */
+void ff_init(void) {
+    /* 1. Asegurar limpieza previa sin fugas de memoria */
+    ff_cleanup();
+
+    int ram_kb = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
+    mem_state.total_ram_kb = ram_kb;
+
+    /* 2. Crear único bloque inicial contiguo libre */
+    MemBlock *initial_block = (MemBlock *)malloc(sizeof(MemBlock));
+    if (initial_block == NULL) {
+        perror("Error de asignacion de memoria en ff_init");
+        exit(EXIT_FAILURE);
+    }
+
+    initial_block->id         = 0;
+    initial_block->start_kb   = 0;
+    initial_block->size_kb    = ram_kb;
+    initial_block->status     = BLOCK_FREE;
+    initial_block->process_id = -1;
+    initial_block->next       = NULL;
+
+    mem_state.block_list = initial_block;
+}
+
 void first_fit_init(int total_kb) {
     mem_state.total_ram_kb = total_kb;
-    mem_reset_blocks();
+    ff_init();
 }
 
 int first_fit_alloc(int pid, int size_kb) {
@@ -140,7 +184,7 @@ void first_fit_view(void) {
 }
 
 void first_fit_cleanup(void) {
-    mem_reset_blocks();
+    ff_cleanup();
 }
 
 int first_fit_can_alloc(int size_kb) {

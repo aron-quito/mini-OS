@@ -23,38 +23,13 @@ MemoryState mem_state;
 static mem_config_t s_mem_config = {DEFAULT_RAM_KB, DEFAULT_PAGE_KB, 32, MEM_ALGO_FIRST_FIT};
 
 /**
- * @brief Regenera la lista enlazada con 1 bloque gigante libre (Issue 3.1).
+ * @brief Regenera la lista enlazada con 1 bloque gigante libre (Issue 3.1 / 6.3).
  *
- * 1. Libera nodos existentes para evitar fugas de memoria (memory leaks).
- * 2. Asigna un bloque que abarca desde 0 hasta total_ram_kb con status BLOCK_FREE.
+ * Delega en ff_init(), que primero ejecuta ff_cleanup() para liberar todos los
+ * nodos previos (dejando block_list = NULL) y luego crea el único bloque libre inicial.
  */
 void mem_reset_blocks(void) {
-    // 1. Liberar nodos previos de la lista
-    MemBlock *current = mem_state.block_list;
-    while (current != NULL) {
-        MemBlock *next = current->next;
-        free(current);
-        current = next;
-    }
-    mem_state.block_list = NULL;
-
-    // 2. Crear el bloque inicial gigante (toda la RAM libre, id=0, start=0)
-    MemBlock *initial_block = (MemBlock *)malloc(sizeof(MemBlock));
-    if (initial_block == NULL) {
-        perror("Error de asignacion de memoria en mem_reset_blocks");
-        exit(EXIT_FAILURE);
-    }
-
-    block_counter = 0;
-    initial_block->id = 0;
-    initial_block->start_kb = 0;
-    initial_block->size_kb = mem_state.total_ram_kb;
-    initial_block->status = BLOCK_FREE;
-    initial_block->process_id = -1;
-    initial_block->next = NULL;
-
-    // 3. Asignar como cabeza de la lista
-    mem_state.block_list = initial_block;
+    ff_init();
 }
 
 /**
@@ -229,14 +204,9 @@ void memory_view(void) {
  * @brief Limpia todas las estructuras dinámicas al apagar el simulador.
  */
 void memory_cleanup(void) {
-    MemBlock *current = mem_state.block_list;
-    while (current != NULL) {
-        MemBlock *next = current->next;
-        free(current);
-        current = next;
-    }
-    mem_state.block_list = NULL;
-    mem_queue_clear();  /* Issue 4.2: limpiar cola de espera también */
+    ff_cleanup();
+    pag_cleanup();
+    mem_queue_clear();  /* Issue 4.2 / 6.3: limpiar cola de espera también */
 }
 
 /* =========================================================================
@@ -783,19 +753,32 @@ int count_allocated_processes(void) {
 }
 
 /**
- * @brief Libera toda la memoria asignada en ambos esquemas (First-Fit y Paginación).
+ * @brief Purga de forma estricta la memoria asignada en ambos esquemas (Issue 6.3 / SIS-59).
+ *
+ * 1. ff_cleanup(): recorre y libera con free() todos los nodos MemBlock y deja
+ *    mem_state.block_list = NULL (sin punteros colgantes).
+ * 2. pag_cleanup(): invalida todas las entradas en page_tables y resetea todos
+ *    los marcos de frame_table a estado libre (frame_owner = -1).
  */
 void release_all_memory(void) {
-    mem_reset_blocks();
-    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
-    int ram_kb  = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
-    paging_init(ram_kb, page_kb);
+    ff_cleanup();
+    pag_cleanup();
 }
 
 /**
- * @brief Inicializa o reinicia las estructuras del pool de memoria para el algoritmo activo.
+ * @brief Transición atómica e inicialización limpia del pool de memoria (Issue 6.3 / SIS-59).
+ *
+ * Secuencia atómica:
+ *   1. Purgar cualquier estructura residual del estado previo (release_all_memory).
+ *   2. Sincronizar dimensiones y algoritmo activo en mem_state y s_mem_config.
+ *   3. Inicializar la topología limpia del algoritmo activo (ff_init y pag_init),
+ *      garantizando que mem-view reporte inmediatamente 100% libre y 0% usado.
  */
 void reset_memory_structures(void) {
+    /* 1. Purgar estructuras previas para evitar memory leaks o punteros colgantes */
+    release_all_memory();
+
+    /* 2. Sincronizar parámetros de capacidad y algoritmo */
     int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
     int ram_kb  = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
 
@@ -803,14 +786,19 @@ void reset_memory_structures(void) {
     mem_state.total_ram_kb = ram_kb;
     mem_state.total_frames = ram_kb / page_kb;
 
+    s_mem_config.total_ram_kb = ram_kb;
+    s_mem_config.page_size_kb = page_kb;
+    s_mem_config.total_frames = mem_state.total_frames;
+
     if (strcmp(mem_state.algorithm, "pag") == 0) {
         s_mem_config.active_algorithm = MEM_ALGO_PAGING;
     } else {
         s_mem_config.active_algorithm = MEM_ALGO_FIRST_FIT;
     }
 
-    mem_reset_blocks();
-    paging_init(ram_kb, page_kb);
+    /* 3. Inicializar topologías limpias (1 bloque libre en FF y 100% marcos libres en PAG) */
+    ff_init();
+    pag_init();
 }
 
 /**

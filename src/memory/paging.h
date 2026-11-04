@@ -47,6 +47,16 @@ extern PageTable  page_tables[MAX_PROC];
 void paging_init(int total_ram_kb, int page_size_kb);
 
 /**
+ * @brief Inicializa la topología de paginación usando la configuración actual de mem_state (Issue 6.3).
+ */
+void pag_init(void);
+
+/**
+ * @brief Limpia e invalida todas las tablas de páginas y resetea FrameTable a estado libre (Issue 6.3).
+ */
+void pag_cleanup(void);
+
+/**
  * @brief Asigna marcos libres (sin requerir contigüidad física) para un proceso — Issue 5.1.
  *
  * Calcula el número de páginas con división techo:

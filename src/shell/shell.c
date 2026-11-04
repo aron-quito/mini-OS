@@ -837,4 +837,7 @@ void shell_loop(void) {
         /* Despacha el comando; si retorna -1 es senal de exit */
         if (shell_dispatch(line) == -1) break;
     }
+
+    /* Issue 6.3: Liberar toda la memoria dinamica antes de cerrar el proceso */
+    memory_cleanup();
 }
