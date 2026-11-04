@@ -1,14 +1,17 @@
 /*
- * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 7.1 (SIS-60)
- *           + Issue 3.1 (SIS-46) + Issue 7.3 (SIS-62)
+ * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43)
+ *           + Issue 3.1 (SIS-46) + Issue 7.1 (SIS-60) + Issue 7.3 (SIS-62)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento
  *                   modular a los comandos del sistema (shell_dispatch).
+ * Issue 2.2 (Aron): Ejecucion asincrona en background con operador '&':
+ *                   extraccion del argumento de memoria (KB), bifurcacion
+ *                   fg/bg en shell_dispatch y cosecha limpia antes del prompt.
  * Issue 3.1 (Luis): Inicializacion del subsistema de memoria fisica simulada.
- * Issue 7.1 (JSON): Actualizacion de help con comandos del Modulo 2 (Hilos).
+ * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos.
  * Issue 7.3 (JSON): Comando thread-demo [p] [c] [n] conectado a
- *                   thread_demo_run() del modulo de hilos (producer_consumer.c).
+ *                   thread_demo_run() del modulo de hilos.
  */
 
 #include "shell.h"
@@ -27,6 +30,7 @@ static int builtin_help(Command *cmd);
 static int builtin_clear(Command *cmd);
 static int builtin_exit(Command *cmd);
 static int builtin_thread_demo(Command *cmd);   /* Issue 7.3 (SIS-62) */
+static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
 /* -----------------------------------------------------------------------
  * Tabla de despacho de comandos built-in
@@ -53,11 +57,16 @@ static const BuiltinEntry BUILTINS[] = {
 /* -----------------------------------------------------------------------
  * shell_init -- Inicializacion de los subsistemas del sistema
  *
+ * Issue 2.2 (SIS-43): Inicializa la tabla de control de background (bg_table).
  * Issue 3.1 (SIS-46): Inicializa la memoria fisica simulada con 128 KB
- * bajo el esquema de particionamiento dinamico First-Fit.
+ * bajo el esquema de particionamiento dinamico First-Fit y muestra el
+ * estado del bloque libre inicial.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
-    /* Inicializar subsistema de memoria para la Issue 3.1 (SIS-46) */
+    /* Issue 2.2: Inicializar subsistema de procesos en background */
+    process_init();
+
+    /* Issue 3.1: Inicializar subsistema de memoria fisica simulada */
     memory_init(128, MEM_ALGO_FIRST_FIT);
 
     if (mem_state.block_list != NULL) {
@@ -78,6 +87,7 @@ void shell_init(void) {
  * o muestra la ayuda especifica si se especifica un comando.
  */
 static int builtin_help(Command *cmd) {
+    /* Si no se especifico un argumento, mostrar la ayuda general */
     if (cmd->argc <= 1) {
         printf("\n");
         printf("  miniOS -- Shell Interactivo Educativo en C11\n");
@@ -85,32 +95,35 @@ static int builtin_help(Command *cmd) {
         printf("  Uso: help [comando]\n\n");
 
         printf("  [Shell / Built-ins]\n");
-        printf("    help              Muestra este mensaje de ayuda o el detalle de un comando.\n");
-        printf("    clear             Limpia la pantalla de la terminal.\n");
-        printf("    exit              Finaliza la sesion del shell.\n");
+        printf("    help                    Muestra este mensaje de ayuda o el detalle de un comando.\n");
+        printf("    clear                   Limpia la pantalla de la terminal.\n");
+        printf("    exit                    Finaliza la sesion del shell.\n");
         printf("\n");
 
-        printf("  [Modulo 1 -- Procesos]  (disponible en Issue 2.1+)\n");
-        printf("    <comando> [args]  Ejecuta un comando del sistema en primer plano.\n");
-        printf("    <comando> [args] & Ejecuta un comando en segundo plano.\n");
-        printf("    ps-mini           Lista los procesos activos de la sesion.\n");
+        printf("  [Modulo 1 -- Procesos]  (Issue 2.1 / 2.2)\n");
+        printf("    <cmd> [args]            Ejecuta un comando del sistema en primer plano.\n");
+        printf("    <cmd> [args] [kb] &     Ejecuta en segundo plano con reserva de RAM simulada.\n");
+        printf("    sleep <seg> [kb] &      Lanza una pausa asincrona simulando proceso en background.\n");
+        printf("    ps-mini                 Lista los procesos activos de la sesion.\n");
         printf("\n");
 
         printf("  [Modulo 2 -- Hilos]\n");
         printf("    thread-demo [p] [c] [n]\n");
-        printf("                      Lanza la demo Productor-Consumidor con p productores,\n");
-        printf("                      c consumidores y n items por productor.\n");
-        printf("                      Valores por defecto: 2 productores, 2 consumidores, 10 items.\n");
-        printf("    thread-stats      Muestra estadisticas de la ultima sesion de hilos.\n");
+        printf("                            Lanza la demo Productor-Consumidor con p productores,\n");
+        printf("                            c consumidores y n items por productor.\n");
+        printf("                            Valores por defecto: 2 productores, 2 consumidores, 10 items.\n");
+        printf("    thread-stats            Muestra estadisticas de la ultima sesion de hilos:\n");
+        printf("                            items producidos, consumidos, perdidas y tiempo de ejecucion.\n");
         printf("\n");
 
         printf("  [Modulo 3 -- Memoria]   (disponible en Issue 3.1+)\n");
-        printf("    mem-config        Configura el tamanho de la RAM simulada.\n");
-        printf("    mem-view          Muestra el estado actual de la memoria.\n");
+        printf("    mem-config              Configura el tamanho de la RAM simulada.\n");
+        printf("    mem-view                Muestra el estado actual de la memoria.\n");
         printf("\n");
         return 0;
     }
 
+    /* Ayuda detallada para un comando especifico */
     const char *topic = cmd->argv[1];
 
     if (strcmp(topic, "help") == 0) {
@@ -122,6 +135,16 @@ static int builtin_help(Command *cmd) {
     } else if (strcmp(topic, "exit") == 0) {
         printf("\n  exit [codigo]\n");
         printf("    Finaliza la sesion de miniOS. Opcionalmente acepta un codigo numerico de salida.\n\n");
+    } else if (strcmp(topic, "sleep") == 0) {
+        printf("\n  sleep <segundos> [mem_kb] &\n");
+        printf("    Ejecuta un proceso de espera en segundo plano simulando carga y memoria (Issue 2.2).\n");
+        printf("    Parametros:\n");
+        printf("      <segundos>  Tiempo que el proceso permanecera activo.\n");
+        printf("      [mem_kb]    (Opcional) Kilobytes de RAM simulada a reservar (por defecto: %d KB).\n", DEFAULT_BG_MEM_KB);
+        printf("      &           Obligatorio para ejecucion asincrona en background.\n");
+        printf("    Ejemplos:\n");
+        printf("      sleep 5 &\n");
+        printf("      sleep 10 256 &\n\n");
     } else if (strcmp(topic, "ps-mini") == 0) {
         printf("\n  ps-mini\n");
         printf("    Muestra la lista de procesos activos y en segundo plano gestionados por el shell.\n\n");
@@ -170,8 +193,10 @@ static int builtin_clear(Command *cmd) {
 /**
  * exit -- Termina la sesion del shell limpiamente.
  *
- * Devuelve -1 como senal a shell_loop para romper el bucle REPL.
- * Soporta un codigo numerico opcional (ej: exit 0).
+ * Devuelve un codigo especial (-1) que shell_dispatch reenvia a
+ * shell_loop para que sepa que debe romper el bucle REPL.
+ * Soporta un codigo numerico opcional (ej: exit 0). Si recibe texto
+ * o argumentos invalidos, emite un error y no finaliza la sesion.
  */
 static int builtin_exit(Command *cmd) {
     if (cmd->argc > 2) {
@@ -191,7 +216,7 @@ static int builtin_exit(Command *cmd) {
     }
 
     printf("[INFO] Finalizando miniOS. Hasta luego!\n");
-    return -1;
+    return -1; /* senal de salida para shell_loop */
 }
 
 /* -----------------------------------------------------------------------
@@ -202,20 +227,13 @@ static int builtin_exit(Command *cmd) {
  *   c = numero de consumidores (defecto 2, minimo 2)
  *   n = items por productor    (defecto 10, minimo 1)
  *
- * Validaciones:
- *   - Demasiados argumentos (> 3): mensaje de uso y retorno 1.
- *   - Argumentos no numericos o negativos: error descriptivo.
- *   - p < 2 o c < 2: aviso del criterio de aceptacion del spec.
- *
  * Llama a thread_demo_run() de producer_consumer.c (Issue 7.2).
  * ----------------------------------------------------------------------- */
 static int builtin_thread_demo(Command *cmd) {
-    /* Valores por defecto segun el spec de la Issue 7.3 */
     int p = 2;   /* productores  */
     int c = 2;   /* consumidores */
     int n = 10;  /* items por productor */
 
-    /* --- Validar numero de argumentos --- */
     if (cmd->argc > 4) {
         fprintf(stderr, "miniOS: thread-demo: demasiados argumentos\n");
         fprintf(stderr, "  Uso: thread-demo [p] [c] [n]\n");
@@ -224,7 +242,6 @@ static int builtin_thread_demo(Command *cmd) {
         return 1;
     }
 
-    /* --- Parsear argumentos opcionales --- */
     if (cmd->argc >= 2) {
         char *ep = NULL;
         long val = strtol(cmd->argv[1], &ep, 10);
@@ -258,7 +275,6 @@ static int builtin_thread_demo(Command *cmd) {
         n = (int)val;
     }
 
-    /* --- Validar minimos segun criterio de aceptacion del spec --- */
     if (p < 2) {
         fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 productores (recibido: %d)\n", p);
         return 1;
@@ -268,28 +284,75 @@ static int builtin_thread_demo(Command *cmd) {
         return 1;
     }
 
-    /* --- Lanzar la demo --- */
     return thread_demo_run(p, c, n);
 }
 
 /* -----------------------------------------------------------------------
- * shell_dispatch -- Enrutador central de comandos (Issue 1.4 / SIS-41)
+ * extract_mem_kb -- Issue 2.2 (SIS-43)
+ *
+ * Extrae el argumento de memoria del arreglo de argumentos.
+ *
+ * Cuando el usuario ejecuta un comando en background con tamanho explicito:
+ *   sleep 10 256 &   ->   argv = ["sleep", "10", "256", NULL], is_background=1
+ *
+ * El ultimo argumento numerico ("256") es el tamanho de RAM en KB que pide el
+ * proceso. Esta funcion lo detecta, lo extrae del arreglo argv y ajusta argc.
+ * Si el ultimo argumento no es un numero puro, usa DEFAULT_BG_MEM_KB (128 KB).
+ * ----------------------------------------------------------------------- */
+static int extract_mem_kb(char **argv, int *argc_ptr) {
+    int argc = *argc_ptr;
+
+    /*
+     * Se necesita al menos: argv[0]=comando, argv[1]=argumento, argv[2]=KB.
+     * Con argc < 3 no hay forma de distinguir el unico argumento numerico
+     * (que pertenece al comando) del argumento de KB de RAM.
+     */
+    if (argc < 3) {
+        return DEFAULT_BG_MEM_KB;
+    }
+
+    /* Verificar si el ultimo argumento es un entero puro positivo */
+    char *last   = argv[argc - 1];
+    char *endptr = NULL;
+    long  val    = strtol(last, &endptr, 10);
+
+    if (*endptr == '\0' && endptr != last && val > 0) {
+        /* Es un numero: extraerlo del argv y ajustar argc */
+        argv[argc - 1] = NULL;
+        (*argc_ptr)--;
+        return (int)val;
+    }
+
+    return DEFAULT_BG_MEM_KB;
+}
+
+/* -----------------------------------------------------------------------
+ * shell_dispatch -- Enrutador central de comandos (Issues 1.4 + 2.2)
  *
  * Flujo:
- *  1. Tokeniza 'line' usando parse_command() del parser (Issue 1.3).
- *  2. Si la linea estaba vacia, retorna 0 sin hacer nada.
+ *  1. Tokeniza 'line' usando parse_command() (Issue 1.3).
+ *  2. Si la linea estaba vacia, retorna 0.
  *  3. Busca argv[0] en la tabla de built-ins y lo ejecuta si lo encuentra.
- *  4. Si no es un built-in, llama a process_execute_fg (Issue 2.1).
+ *  4. Si no es un built-in y cmd.is_background == 0:
+ *       -> process_execute_fg() -- sincrono (Issue 2.1).
+ *  5. Si no es un built-in y cmd.is_background == 1:
+ *       -> Extrae el argumento de KB con extract_mem_kb().
+ *       -> process_execute_bg() -- asincrono con reserva de RAM (Issue 2.2).
+ *
+ * @param line  Linea de texto cruda leida por shell_loop.
+ * @return 0 en exito, -1 si el shell debe terminar (comando exit).
  * ----------------------------------------------------------------------- */
 int shell_dispatch(char *line) {
     Command cmd;
     int argc = parse_command(line, &cmd);
 
+    /* Linea vacia o solo espacios: no hacer nada */
     if (argc == 0) {
         free_command(&cmd);
         return 0;
     }
 
+    /* Buscar argv[0] en la tabla de built-ins */
     for (int i = 0; i < BUILTIN_COUNT; i++) {
         if (strcmp(cmd.argv[0], BUILTINS[i].name) == 0) {
             int result = BUILTINS[i].handler(&cmd);
@@ -298,30 +361,65 @@ int shell_dispatch(char *line) {
         }
     }
 
-    int result = process_execute_fg(cmd.argv);
+    int result;
+
+    if (cmd.is_background) {
+        /*
+         * Issue 2.2 -- Ejecucion en background con operador '&':
+         * Extraer el argumento de KB antes de llamar a execvp para que el
+         * programa externo no lo reciba como argumento desconocido.
+         * Ejemplo: "sleep 10 256 &" -> execvp("sleep", ["sleep", "10", NULL])
+         *                              mem_kb = 256
+         */
+        int mem_kb = extract_mem_kb(cmd.argv, &cmd.argc);
+        result = process_execute_bg(cmd.argv, mem_kb);
+    } else {
+        /* Issue 2.1 -- Ejecucion en foreground sincrona */
+        result = process_execute_fg(cmd.argv);
+    }
+
     free_command(&cmd);
     return result;
 }
 
 /* -----------------------------------------------------------------------
- * shell_loop -- Ciclo principal REPL (Issue 1.2 / SIS-39)
+ * shell_loop -- Ciclo principal REPL (Issue 1.2 + Issue 2.2)
+ *
+ * Lee lineas del usuario, las limpia y las envia a shell_dispatch.
+ * Antes de mostrar cada prompt, llama a process_reap_bg() para cosechar
+ * procesos en background que hayan terminado. Esto garantiza que las
+ * notificaciones de fin aparezcan en una linea limpia y nunca se solapen
+ * con el texto que el usuario esta escribiendo.
+ *
+ * Si dispatch devuelve -1 (senal de exit), rompe el bucle.
  * ----------------------------------------------------------------------- */
 void shell_loop(void) {
     char line[MAX_LINE];
 
     while (1) {
+        /*
+         * Cosechar procesos en background terminados ANTES del prompt.
+         * Garantiza que la notificacion salga en una linea limpia y no
+         * se mezcle con la entrada del usuario.
+         */
+        process_reap_bg();
+
         printf("miniOS> ");
         fflush(stdout);
 
+        /* Detecta Ctrl+D (EOF) */
         if (fgets(line, sizeof(line), stdin) == NULL) {
             printf("\n[INFO] Forzando cierre, Saliendo del shell...\n");
             break;
         }
 
+        /* Elimina '\n' o '\r\n' al final de la linea leida */
         line[strcspn(line, "\r\n")] = '\0';
 
+        /* Ignora lineas completamente vacias (solo Enter) */
         if (strlen(line) == 0) continue;
 
+        /* Despacha el comando; si retorna -1 es senal de exit */
         if (shell_dispatch(line) == -1) break;
     }
 }
