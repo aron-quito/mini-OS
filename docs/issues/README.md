@@ -37,6 +37,17 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 
 ---
 
+## 📋 Índice de Issues de Milestone 8: Integración Global, Señales y Hardening
+
+| Identificador Linear | Issue | Título | Estado | Documento de Especificación |
+|:---:|:---:|:---|:---:|:---:|
+| **SIS-64** | 8.1 | Manejadores de señales del sistema con sigaction | ⏳ Pendiente (`Todo`) | *Próximamente* |
+| **SIS-65** | 8.2 | Validación estricta de entradas y mensajes de error | ✅ Completado (`Done`) | [SIS-65: Validación estricta de entradas](sis-65.md) |
+| **SIS-66** | 8.3 | Batería de pruebas integradas y casos de prueba | ⏳ Pendiente (`Todo`) | *Próximamente* |
+| **SIS-67** | 8.4 | Verificación dinámica de fugas con Valgrind y Helgrind | 🔒 Bloqueado por SIS-66 | *Próximamente* |
+
+---
+
 ## 📌 Guía de Uso
 - Cada documento `sis-XX.md` delimita el **alcance estricto** de la tarea correspondiente para evitar la implementación prematura o acoplamiento no deseado entre fases.
 - Los archivos en `src/` que pertenezcan a hitos posteriores deben mantenerse como **stubs mínimos** hasta que su issue correspondiente entre en fase de desarrollo.

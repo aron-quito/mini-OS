@@ -73,13 +73,55 @@ int first_fit_alloc(int pid, int size_kb) {
 }
 
 int first_fit_free(int pid) {
-    (void)pid;
-    // Stub base — Se implementará en Issue 3.4 (SIS-49)
+    int found = 0;
+    MemBlock *curr = mem_state.block_list;
+
+    while (curr != NULL) {
+        if (curr->status == BLOCK_USED && curr->process_id == pid) {
+            curr->status = BLOCK_FREE;
+            curr->process_id = -1;
+            found = 1;
+        }
+        curr = curr->next;
+    }
+
+    if (!found) {
+        return -1;
+    }
+
+    /* Coalescencia: fusionar bloques libres contiguos */
+    curr = mem_state.block_list;
+    while (curr != NULL && curr->next != NULL) {
+        if (curr->status == BLOCK_FREE && curr->next->status == BLOCK_FREE) {
+            MemBlock *dup = curr->next;
+            curr->size_kb += dup->size_kb;
+            curr->next = dup->next;
+            free(dup);
+        } else {
+            curr = curr->next;
+        }
+    }
+
     return 0;
 }
 
 void first_fit_view(void) {
-    // Stub base — Se implementará en Issue 6.1 (SIS-57)
+    MemBlock *curr = mem_state.block_list;
+    if (curr == NULL) {
+        printf("[MEM-VIEW] Memoria no inicializada.\n");
+        return;
+    }
+
+    printf("\n");
+    while (curr != NULL) {
+        if (curr->status == BLOCK_USED) {
+            printf("[P%d: %dKB]", curr->process_id, curr->size_kb);
+        } else {
+            printf("[FREE: %dKB]", curr->size_kb);
+        }
+        curr = curr->next;
+    }
+    printf("\n\n");
 }
 
 void first_fit_cleanup(void) {

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "first_fit.h"
 
 /* Estado global de la memoria física simulada (Issue 3.1) */
 MemoryState mem_state;
@@ -101,13 +102,19 @@ int memory_alloc(int pid, int size_kb) {
 }
 
 int memory_free(int pid) {
-    // Stub base — Se implementará en Issue 3.4 (ff_free con coalescing)
-    (void)pid;
+    if (memory_is_first_fit()) {
+        return first_fit_free(pid);
+    }
     return 0;
 }
 
 void memory_view(void) {
-    // Stub base — Se implementará en Issue 6.1 (comando mem-view)
+    if (memory_is_first_fit()) {
+        first_fit_view();
+    } else {
+        printf("\n[MEM-VIEW] Modo Paginacion: %d marcos fijos de %d KB\n\n",
+               mem_state.total_frames, mem_state.page_size_kb);
+    }
 }
 
 /**
@@ -222,8 +229,8 @@ int memory_config_page(int page_kb) {
 
     if (!is_power_of_two(page_kb)) {
         fprintf(stderr,
-            "[ERROR] %d KB no es potencia de 2. Valores validos: 4, 8, 16, 32, 64, 128, 256...\n",
-            page_kb);
+            "[ERROR] El tamano de pagina debe ser potencia de 2.\n"
+            "        Valores validos: 4, 8, 16, 32, 64, 128, 256...\n");
         return 1;
     }
 
@@ -403,4 +410,66 @@ void memory_status(void) {
 
     printf("  +================================================+\n");
     printf("\n");
+}
+
+int memory_switch_algorithm(const char *target) {
+    if (strcmp(target, "ff") == 0) {
+        if (memory_is_first_fit()) {
+            printf("[INFO] El algoritmo ya es First-Fit. No se realizaron cambios.\n");
+            return 0;
+        }
+
+        if (has_active_processes()) {
+            char ans[32];
+            printf("ADVERTENCIA: Hay proceso(s) en RAM.\n");
+            printf("             El cambio a 'ff' liberara toda la memoria.\n");
+            printf("¿Desea continuar? [s/N]: ");
+            fflush(stdout);
+            if (fgets(ans, sizeof(ans), stdin) == NULL || (ans[0] != 's' && ans[0] != 'S')) {
+                printf("[CANCELADO] Cambio de algoritmo cancelado por el usuario.\n");
+                return 0;
+            }
+        }
+
+        strcpy(mem_state.algorithm, "ff");
+        s_mem_config.active_algorithm = MEM_ALGO_FIRST_FIT;
+        mem_reset_blocks();
+        printf("[OK] Algoritmo cambiado a: First-Fit\n");
+        printf("[INFO] Tablas de paginas y marcos fisicos purgados.\n");
+        printf("[INFO] Memoria reinicializada como 1 bloque continuo gigante libre (%d KB).\n",
+               mem_state.total_ram_kb);
+        return 0;
+    }
+
+    if (strcmp(target, "pag") == 0) {
+        if (!memory_is_first_fit()) {
+            printf("[INFO] El algoritmo ya es Paginacion. No se realizaron cambios.\n");
+            return 0;
+        }
+
+        if (has_active_processes()) {
+            char ans[32];
+            printf("ADVERTENCIA: Hay proceso(s) en RAM.\n");
+            printf("             El cambio a 'pag' liberara toda la memoria.\n");
+            printf("¿Desea continuar? [s/N]: ");
+            fflush(stdout);
+            if (fgets(ans, sizeof(ans), stdin) == NULL || (ans[0] != 's' && ans[0] != 'S')) {
+                printf("[CANCELADO] Cambio de algoritmo cancelado por el usuario.\n");
+                return 0;
+            }
+        } else {
+            printf("[INFO] Memoria libre. Cambiando de particionamiento dinamico a paginacion...\n");
+        }
+
+        strcpy(mem_state.algorithm, "pag");
+        s_mem_config.active_algorithm = MEM_ALGO_PAGING;
+        mem_reset_blocks();
+        printf("[OK] Algoritmo cambiado a: Paginacion\n");
+        printf("[INFO] Lista de bloques First-Fit limpiada.\n");
+        printf("[INFO] Memoria fisica estructurada en %d marcos fijos de %d KB.\n",
+               mem_state.total_frames, mem_state.page_size_kb);
+        return 0;
+    }
+
+    return 1;
 }

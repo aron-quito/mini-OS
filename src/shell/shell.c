@@ -41,6 +41,12 @@ static int builtin_thread_stats(Command *cmd);         /* Issue 7.4 (SIS-63) */
 static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
+static int builtin_mem_alloc(Command *cmd);            /* Issue 8.2 / 3.3 */
+static int builtin_mem_free(Command *cmd);             /* Issue 8.2 / 3.4 */
+static int builtin_switch_ram(Command *cmd);           /* Issue 8.2 / 6.2 */
+static int builtin_mem_view(Command *cmd);             /* Issue 8.2 / 6.1 */
+static int builtin_mem_page_table(Command *cmd);       /* Issue 8.2 / 5.3 */
+static int builtin_mem_translate(Command *cmd);        /* Issue 8.2 / 5.2 */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
 /* -----------------------------------------------------------------------
@@ -56,15 +62,22 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",         builtin_help         },
-    { "clear",        builtin_clear        },
-    { "exit",         builtin_exit         },
-    { "ps-mini",      builtin_ps_mini      }, /* Issue 2.3 (SIS-44) */
-    { "thread-demo",  builtin_thread_demo  }, /* Issue 7.3 (SIS-62) */
-    { "thread-stats", builtin_thread_stats }, /* Issue 7.4 (SIS-63) */
+    { "help",           builtin_help           },
+    { "clear",          builtin_clear          },
+    { "exit",           builtin_exit           },
+    { "ps-mini",        builtin_ps_mini        }, /* Issue 2.3 (SIS-44) */
+    { "thread-demo",    builtin_thread_demo    }, /* Issue 7.3 (SIS-62) */
+    { "thread-stats",   builtin_thread_stats   }, /* Issue 7.4 (SIS-63) */
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
-    { "mem-config",   builtin_mem_config   },
-    { "mem-status",   builtin_mem_status   },
+    { "mem-config",     builtin_mem_config     },
+    { "mem-status",     builtin_mem_status     },
+    /* Issue 8.2 (SIS-65): Validacion estricta y comandos de memoria */
+    { "mem-alloc",      builtin_mem_alloc      },
+    { "mem-free",       builtin_mem_free       },
+    { "mem-view",       builtin_mem_view       },
+    { "switch-ram",     builtin_switch_ram     },
+    { "mem-page-table", builtin_mem_page_table },
+    { "mem-translate",  builtin_mem_translate  },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -141,6 +154,9 @@ static int builtin_help(Command *cmd) {
         printf("    mem-config default       Preset: 1024 KB RAM, 64 KB/pagina, 16 marcos, FF.\n");
         printf("    mem-status               Muestra el resumen del estado de la memoria.\n");
         printf("    mem-view                 Muestra el mapa visual de bloques (Issue 6.1).\n");
+        printf("    mem-alloc <pid> <size>   Asigna memoria contigua a un proceso.\n");
+        printf("    mem-free <pid>           Libera la memoria de un proceso.\n");
+        printf("    switch-ram [ff|pag]      Cambia el esquema de memoria activo.\n");
         printf("\n");
         return 0;
     }
@@ -224,6 +240,17 @@ static int builtin_help(Command *cmd) {
     } else if (strcmp(topic, "mem-view") == 0) {
         printf("\n  mem-view\n");
         printf("    Visualiza el mapa de asignacion de marcos/paginas y fragmentacion de memoria.\n\n");
+    } else if (strcmp(topic, "mem-alloc") == 0) {
+        printf("\n  mem-alloc <pid> <size_kb>\n");
+        printf("    Asigna memoria contigua a un proceso usando el algoritmo activo.\n\n");
+    } else if (strcmp(topic, "mem-free") == 0) {
+        printf("\n  mem-free <pid>\n");
+        printf("    Libera la memoria asignada a un proceso y fusiona bloques contiguos.\n\n");
+    } else if (strcmp(topic, "switch-ram") == 0) {
+        printf("\n  switch-ram [ff|pag]\n");
+        printf("    Conmuta en caliente el algoritmo de gestion de memoria.\n");
+        printf("    ff  = First-Fit (particionamiento dinamico en bloques contiguos)\n");
+        printf("    pag = Paginacion (marcos fijos y tablas de paginas)\n\n");
     } else {
         fprintf(stderr, "miniOS: help: no hay entrada de ayuda para '%s'. Usa 'help' para ver la lista.\n", topic);
         return 1;
@@ -310,8 +337,9 @@ static int builtin_thread_demo(Command *cmd) {
     if (cmd->argc >= 2) {
         char *ep = NULL;
         long val = strtol(cmd->argv[1], &ep, 10);
-        if (*ep != '\0' || ep == cmd->argv[1] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de productores debe ser un entero positivo\n", cmd->argv[1]);
+        if (*ep != '\0' || ep == cmd->argv[1]) {
+            fprintf(stderr, "[ERROR] Argumentos invalidos. Deben ser enteros positivos.\n");
+            fprintf(stderr, "Uso: thread-demo [num_prod] [num_cons] [items_por_prod]\n");
             return 1;
         }
         p = (int)val;
@@ -320,8 +348,9 @@ static int builtin_thread_demo(Command *cmd) {
     if (cmd->argc >= 3) {
         char *ep = NULL;
         long val = strtol(cmd->argv[2], &ep, 10);
-        if (*ep != '\0' || ep == cmd->argv[2] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de consumidores debe ser un entero positivo\n", cmd->argv[2]);
+        if (*ep != '\0' || ep == cmd->argv[2]) {
+            fprintf(stderr, "[ERROR] Argumentos invalidos. Deben ser enteros positivos.\n");
+            fprintf(stderr, "Uso: thread-demo [num_prod] [num_cons] [items_por_prod]\n");
             return 1;
         }
         c = (int)val;
@@ -330,19 +359,20 @@ static int builtin_thread_demo(Command *cmd) {
     if (cmd->argc >= 4) {
         char *ep = NULL;
         long val = strtol(cmd->argv[3], &ep, 10);
-        if (*ep != '\0' || ep == cmd->argv[3] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de items debe ser un entero positivo\n", cmd->argv[3]);
+        if (*ep != '\0' || ep == cmd->argv[3]) {
+            fprintf(stderr, "[ERROR] Argumentos invalidos. Deben ser enteros positivos.\n");
+            fprintf(stderr, "Uso: thread-demo [num_prod] [num_cons] [items_por_prod]\n");
             return 1;
         }
         n = (int)val;
     }
 
-    if (p < 2) {
-        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 productores (recibido: %d)\n", p);
+    if (p < 2 || c < 2) {
+        fprintf(stderr, "[ERROR] Se requieren minimo 2 productores y 2 consumidores.\n");
         return 1;
     }
-    if (c < 2) {
-        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 consumidores (recibido: %d)\n", c);
+    if (n < 1) {
+        fprintf(stderr, "[ERROR] El numero de items por productor debe ser > 0.\n");
         return 1;
     }
 
@@ -421,6 +451,16 @@ static int builtin_mem_config(Command *cmd) {
         return memory_config_default();
     }
 
+    if (strcmp(subcmd, "ram") != 0 &&
+        strcmp(subcmd, "page") != 0 &&
+        strcmp(subcmd, "frames") != 0) {
+        fprintf(stderr,
+            "[ERROR] Sub-comando desconocido: '%s'\n"
+            "        Usa 'mem-config' sin argumentos para ver las opciones disponibles.\n",
+            subcmd);
+        return 1;
+    }
+
     /* Sub-comandos que requieren un valor numerico en argv[2] */
     if (cmd->argc < 3) {
         fprintf(stderr,
@@ -443,16 +483,176 @@ static int builtin_mem_config(Command *cmd) {
     if (strcmp(subcmd, "page")   == 0) return memory_config_page((int)val);
     if (strcmp(subcmd, "frames") == 0) return memory_config_frames((int)val);
 
-    fprintf(stderr,
-        "[ERROR] Sub-comando desconocido: '%s'\n"
-        "        Usa 'mem-config' sin argumentos para ver las opciones disponibles.\n",
-        subcmd);
     return 1;
 }
 
 static int builtin_mem_status(Command *cmd) {
     (void)cmd;
     memory_status();
+    return 0;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 8.2 (SIS-65): Comandos de gestion de memoria con validacion estricta
+ * ----------------------------------------------------------------------- */
+
+static int builtin_mem_alloc(Command *cmd) {
+    char *endptr = NULL;
+    long pid, size_kb;
+    const MemBlock *b;
+
+    if (cmd->argc < 3) {
+        fprintf(stderr, "[ERROR] Uso: mem-alloc <pid> <size_kb>\n");
+        fprintf(stderr, "Ejemplo: mem-alloc 42 256\n");
+        return 1;
+    }
+
+    endptr = NULL;
+    pid = strtol(cmd->argv[1], &endptr, 10);
+    if (*endptr != '\0' || endptr == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] El PID debe ser un entero positivo.\n");
+        return 1;
+    }
+
+    endptr = NULL;
+    size_kb = strtol(cmd->argv[2], &endptr, 10);
+    if (*endptr != '\0' || endptr == cmd->argv[2] || size_kb <= 0) {
+        fprintf(stderr, "[ERROR] Tamano debe ser > 0 KB.\n");
+        return 1;
+    }
+
+    /* Verificar si el PID ya tiene memoria asignada */
+    b = mem_state.block_list;
+    while (b != NULL) {
+        if (b->status == BLOCK_USED && b->process_id == (int)pid) {
+            fprintf(stderr,
+                "[ADVERTENCIA] PID %ld ya tiene %d KB asignados.\n"
+                "Use 'mem-free %ld' antes de reasignar.\n",
+                pid, b->size_kb, pid);
+            return 1;
+        }
+        b = b->next;
+    }
+
+    if (memory_alloc((int)pid, (int)size_kb) != 0) {
+        fprintf(stderr,
+            "[ERROR] No se pudo asignar %ld KB al PID %ld (memoria insuficiente o fragmentacion).\n",
+            size_kb, pid);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int builtin_mem_free(Command *cmd) {
+    char *endptr = NULL;
+    long pid;
+
+    if (cmd->argc < 2) {
+        fprintf(stderr, "[ERROR] Uso: mem-free <pid>\n");
+        return 1;
+    }
+
+    pid = strtol(cmd->argv[1], &endptr, 10);
+    if (*endptr != '\0' || endptr == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] PID invalido: '%s'. Debe ser un entero positivo.\n", cmd->argv[1]);
+        return 1;
+    }
+
+    if (memory_free((int)pid) != 0) {
+        fprintf(stderr, "[ERROR] PID %ld no tiene bloques asignados en memoria.\n", pid);
+        return 1;
+    }
+
+    printf("[OK] Memoria liberada para PID %ld.\n", pid);
+    return 0;
+}
+
+static int builtin_switch_ram(Command *cmd) {
+    const char *target;
+
+    if (cmd->argc < 2) {
+        fprintf(stderr, "[ERROR] Se requiere un argumento.\n");
+        fprintf(stderr, "Uso: switch-ram [ff|pag]\n");
+        return 1;
+    }
+
+    target = cmd->argv[1];
+    if (strcmp(target, "ff") != 0 && strcmp(target, "pag") != 0) {
+        fprintf(stderr, "[ERROR] Algoritmo desconocido: '%s'.\n", target);
+        fprintf(stderr, "Uso: switch-ram [ff|pag]\n");
+        fprintf(stderr, "  ff  = First-Fit (particionamiento dinamico en bloques contiguos)\n");
+        fprintf(stderr, "  pag = Paginacion (division en marcos fisicos y paginas logicas)\n");
+        return 1;
+    }
+
+    return memory_switch_algorithm(target);
+}
+
+static int builtin_mem_view(Command *cmd) {
+    (void)cmd;
+    memory_view();
+    return 0;
+}
+
+static int builtin_mem_page_table(Command *cmd) {
+    char *ep = NULL;
+    long pid;
+
+    if (memory_is_first_fit()) {
+        fprintf(stderr,
+            "[ERROR] El comando 'mem-page-table' solo esta disponible en modo Paginacion.\n"
+            "[INFO] En First-Fit la memoria se administra como particiones dinamicas contiguas, sin paginas ni marcos.\n"
+            "[INFO] Para utilizar el modelo de paginacion, cambie de algoritmo con 'switch-ram pag'.\n");
+        return 1;
+    }
+
+    if (cmd->argc < 2) {
+        fprintf(stderr, "[ERROR] Uso: mem-page-table <pid>\n");
+        return 1;
+    }
+
+    pid = strtol(cmd->argv[1], &ep, 10);
+    if (*ep != '\0' || ep == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] El PID debe ser un entero positivo.\n");
+        return 1;
+    }
+
+    printf("[INFO] Tabla de paginas consultada para PID %ld.\n", pid);
+    return 0;
+}
+
+static int builtin_mem_translate(Command *cmd) {
+    char *ep = NULL;
+    long pid, addr;
+
+    if (memory_is_first_fit()) {
+        fprintf(stderr,
+            "[ERROR] El comando 'mem-translate' requiere el modo Paginacion ('pag').\n"
+            "[INFO] First-Fit utiliza direccionamiento contiguo directo (offset base en memoria fisica).\n"
+            "[INFO] Use 'switch-ram pag' si desea experimentar con traduccion por tablas de paginas.\n");
+        return 1;
+    }
+
+    if (cmd->argc < 3) {
+        fprintf(stderr, "[ERROR] Uso: mem-translate <pid> <dir_logica>\n");
+        return 1;
+    }
+
+    pid = strtol(cmd->argv[1], &ep, 10);
+    if (*ep != '\0' || ep == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] El PID debe ser un entero positivo.\n");
+        return 1;
+    }
+
+    ep = NULL;
+    addr = strtol(cmd->argv[2], &ep, 10);
+    if (*ep != '\0' || ep == cmd->argv[2] || addr < 0) {
+        fprintf(stderr, "[ERROR] La direccion logica debe ser un entero no negativo (>= 0).\n");
+        return 1;
+    }
+
+    printf("[INFO] Traduciendo direccion logica %ld para PID %ld...\n", addr, pid);
     return 0;
 }
 

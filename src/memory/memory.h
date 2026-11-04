@@ -177,4 +177,11 @@ void memory_status(void);
  */
 int memory_is_first_fit(void);
 
+/**
+ * @brief Conmuta el algoritmo de memoria ("ff" o "pag") con validaciones de seguridad.
+ * @param target "ff" o "pag"
+ * @return 0 en exito, 1 en error o cancelacion.
+ */
+int memory_switch_algorithm(const char *target);
+
 #endif // MEMORY_H
