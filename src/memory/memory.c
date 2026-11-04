@@ -749,3 +749,126 @@ int cmd_mem_view(int argc, char **argv) {
     memory_view();
     return 0;
 }
+
+/* =========================================================================
+ * Issue 6.2 (SIS-58): Cambio dinámico y seguro de algoritmo (switch-ram)
+ * ========================================================================= */
+
+/**
+ * @brief Cuenta cuántos procesos tienen memoria asignada actualmente en RAM.
+ *
+ * En modo First-Fit recorre mem_state.block_list contando bloques BLOCK_USED.
+ * En modo Paginación recorre page_tables contando entradas activas (process_id != -1).
+ */
+int count_allocated_processes(void) {
+    int count = 0;
+
+    if (memory_is_first_fit()) {
+        const MemBlock *curr = mem_state.block_list;
+        while (curr != NULL) {
+            if (curr->status == BLOCK_USED) {
+                count++;
+            }
+            curr = curr->next;
+        }
+    } else {
+        for (int i = 0; i < MAX_PROC; i++) {
+            if (page_tables[i].process_id != -1 && page_tables[i].num_pages > 0) {
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+/**
+ * @brief Libera toda la memoria asignada en ambos esquemas (First-Fit y Paginación).
+ */
+void release_all_memory(void) {
+    mem_reset_blocks();
+    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    int ram_kb  = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
+    paging_init(ram_kb, page_kb);
+}
+
+/**
+ * @brief Inicializa o reinicia las estructuras del pool de memoria para el algoritmo activo.
+ */
+void reset_memory_structures(void) {
+    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    int ram_kb  = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
+
+    mem_state.page_size_kb = page_kb;
+    mem_state.total_ram_kb = ram_kb;
+    mem_state.total_frames = ram_kb / page_kb;
+
+    if (strcmp(mem_state.algorithm, "pag") == 0) {
+        s_mem_config.active_algorithm = MEM_ALGO_PAGING;
+    } else {
+        s_mem_config.active_algorithm = MEM_ALGO_FIRST_FIT;
+    }
+
+    mem_reset_blocks();
+    paging_init(ram_kb, page_kb);
+}
+
+/**
+ * @brief Comando interactivo switch-ram [ff|pag] con capa de seguridad (Issue 6.2).
+ *
+ * 1. Valida que se reciba exactamente un argumento válido ("ff" o "pag").
+ * 2. Verifica si el sistema ya opera con dicho algoritmo.
+ * 3. Si hay procesos en RAM o en mem_queue, solicita confirmación interactiva [s/N].
+ * 4. Conmuta mem_state.algorithm, reinicia las estructuras e informa al usuario.
+ */
+int cmd_switch_ram(int argc, char **argv) {
+    /* 1. Validación de argumentos */
+    if (argc != 2 || argv == NULL || argv[1] == NULL ||
+        (strcmp(argv[1], "ff") != 0 && strcmp(argv[1], "pag") != 0)) {
+        fprintf(stderr, "Uso: switch-ram [ff|pag]\n");
+        return 1;
+    }
+
+    const char *target_algo = argv[1];
+
+    /* 2. Validación de estado redundante */
+    if (strcmp(mem_state.algorithm, target_algo) == 0) {
+        printf("[INFO] El sistema ya está operando con el algoritmo: %s\n", target_algo);
+        return 0;
+    }
+
+    /* 3. Capa de seguridad y confirmación interactiva */
+    int active  = count_allocated_processes();
+    int waiting = mem_queue_length();
+
+    if (active > 0 || waiting > 0) {
+        printf("ADVERTENCIA: Hay %d proceso(s) en RAM y %d en cola de espera.\n",
+               active, waiting);
+        printf("El cambio a '%s' liberará toda la memoria y purgará la cola.\n",
+               target_algo);
+        printf("¿Está seguro de continuar? [s/N]: ");
+        fflush(stdout);
+
+        char response[32];
+        if (fgets(response, sizeof(response), stdin) == NULL ||
+            (response[0] != 's' && response[0] != 'S')) {
+            printf("[INFO] Operación cancelada por el usuario. No se realizaron cambios.\n");
+            return 0;
+        }
+
+        release_all_memory();
+        mem_queue_clear();
+        printf("[OK] Memoria y cola purgadas.\n");
+    }
+
+    /* 4. Conmutación e inicialización */
+    strncpy(mem_state.algorithm, target_algo, sizeof(mem_state.algorithm) - 1);
+    mem_state.algorithm[sizeof(mem_state.algorithm) - 1] = '\0';
+
+    reset_memory_structures();
+
+    printf("[OK] Algoritmo cambiado exitosamente a: %s\n",
+           (strcmp(target_algo, "ff") == 0) ? "First-Fit" : "Paginación");
+
+    return 0;
+}

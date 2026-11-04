@@ -174,6 +174,30 @@ void render_mem_view_pag(void);
  */
 int cmd_mem_view(int argc, char **argv);
 
+/* =========================================================================
+ * Issue 6.2 (SIS-58): Conmutación dinámica de algoritmo (switch-ram)
+ * ========================================================================= */
+
+/**
+ * @brief Cuenta la cantidad de procesos actualmente alojados en la RAM simulada.
+ */
+int count_allocated_processes(void);
+
+/**
+ * @brief Libera todos los bloques (First-Fit) y marcos/tablas de páginas (Paginación).
+ */
+void release_all_memory(void);
+
+/**
+ * @brief Reinicia e inicializa las estructuras de memoria para el algoritmo activo.
+ */
+void reset_memory_structures(void);
+
+/**
+ * @brief Handler interactivo para el comando switch-ram [ff|pag] (Issue 6.2).
+ */
+int cmd_switch_ram(int argc, char **argv);
+
 /**
  * @brief Libera toda la memoria dinámica de la lista enlazada al apagar el SO.
  */

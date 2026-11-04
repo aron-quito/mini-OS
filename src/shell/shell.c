@@ -51,6 +51,7 @@ static int builtin_mem_queue(Command *cmd);            /* Issue 4.3 (SIS-52) */
 static int builtin_mem_translate(Command *cmd);        /* Issue 5.2 (SIS-55) */
 static int builtin_mem_page_table(Command *cmd);       /* Issue 5.3 (SIS-56) */
 static int builtin_mem_view(Command *cmd);             /* Issue 6.1 (SIS-57) */
+static int builtin_switch_ram(Command *cmd);           /* Issue 6.2 (SIS-58) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
@@ -87,6 +88,8 @@ static const BuiltinEntry BUILTINS[] = {
     /* Issue 6.1 (SIS-57): Visualizador grafico interactivo de RAM y alias */
     { "mem-view",       builtin_mem_view       },
     { "ram-view",       builtin_mem_view       },
+    /* Issue 6.2 (SIS-58): Conmutacion dinamica de algoritmo en caliente */
+    { "switch-ram",     builtin_switch_ram     },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -168,6 +171,7 @@ static int builtin_help(Command *cmd) {
         printf("    mem-translate <pid> <d>  Traduce una direccion logica a fisica (modo PAG).\n");
         printf("    mem-page-table <pid>     Visualiza la tabla de paginas del proceso (modo PAG).\n");
         printf("    mem-view / ram-view      Muestra el mapa visual de RAM y cola de espera.\n");
+        printf("    switch-ram [ff|pag]      Alterna el algoritmo de memoria con confirmacion.\n");
         printf("\n");
         return 0;
     }
@@ -310,6 +314,12 @@ static int builtin_help(Command *cmd) {
         printf("    Renderiza en terminal el mapa grafico de la memoria RAM adaptado al\n");
         printf("    algoritmo activo (tira de bloques en First-Fit o cuadricula de marcos\n");
         printf("    en Paginacion), metricas de fragmentacion y estado de mem_queue.\n\n");
+    } else if (strcmp(topic, "switch-ram") == 0) {
+        printf("\n  switch-ram [ff|pag]\n");
+        printf("    Alterna en caliente el algoritmo de gestion de memoria entre First-Fit (ff)\n");
+        printf("    y Paginacion (pag).\n");
+        printf("    Si existen procesos activos en RAM o en la cola de espera, solicita\n");
+        printf("    confirmacion interactiva [s/N] antes de purgar la memoria y la cola.\n\n");
     } else {
         fprintf(stderr, "miniOS: help: no hay entrada de ayuda para '%s'. Usa 'help' para ver la lista.\n", topic);
         return 1;
@@ -651,6 +661,13 @@ static int builtin_mem_page_table(Command *cmd) {
  * ----------------------------------------------------------------------- */
 static int builtin_mem_view(Command *cmd) {
     return cmd_mem_view(cmd->argc, cmd->argv);
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 6.2 (SIS-58) -- Handler de switch-ram [ff|pag]
+ * ----------------------------------------------------------------------- */
+static int builtin_switch_ram(Command *cmd) {
+    return cmd_switch_ram(cmd->argc, cmd->argv);
 }
 
 /* -----------------------------------------------------------------------
