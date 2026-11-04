@@ -1,31 +1,183 @@
-#include <stddef.h>
+/*
+ * mem_queue.c — Issue 4.1 (SIS-50)
+ *
+ * Implementación de la cola FIFO de procesos en espera de memoria RAM.
+ *
+ * Estructura interna:
+ *   - Lista enlazada simple con punteros front (cabeza) y rear (cola).
+ *   - 'count' lleva el número de nodos; 'total_waiting_kb' acumula
+ *     el total de KB solicitados por los procesos en espera.
+ *
+ * Complejidades:
+ *   enqueue  → O(1)  (inserción al rear)
+ *   dequeue  → O(1)  (extracción del front)
+ *   remove   → O(n)  (búsqueda por PID)
+ *   clear    → O(n)
+ *   print    → O(n)
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include "mem_queue.h"
 
+/* -----------------------------------------------------------------------
+ * Estado interno de la cola (singleton estático)
+ * ----------------------------------------------------------------------- */
+static struct {
+    mem_queue_node_t *front;
+    mem_queue_node_t *rear;
+    int               count;
+    int               total_waiting_kb;
+} q;
+
+/* -----------------------------------------------------------------------
+ * mem_queue_init
+ * ----------------------------------------------------------------------- */
 void mem_queue_init(void) {
-    // Stub base — Se implementará en Milestone 4 (SIS-50)
+    q.front            = NULL;
+    q.rear             = NULL;
+    q.count            = 0;
+    q.total_waiting_kb = 0;
 }
 
+/* -----------------------------------------------------------------------
+ * mem_queue_enqueue
+ * ----------------------------------------------------------------------- */
 int mem_queue_enqueue(int pid, int size_kb, const char *command) {
-    (void)pid;
-    (void)size_kb;
-    (void)command;
-    return 0;
+    mem_queue_node_t *node = malloc(sizeof(mem_queue_node_t));
+    if (!node) return -1;
+
+    node->pid         = pid;
+    node->size_kb     = size_kb;
+    node->enqueued_at = time(NULL);
+    node->next        = NULL;
+    strncpy(node->command, command ? command : "", sizeof(node->command) - 1);
+    node->command[sizeof(node->command) - 1] = '\0';
+
+    if (q.rear == NULL) {
+        /* Cola vacía: front y rear apuntan al nuevo nodo */
+        q.front = node;
+        q.rear  = node;
+    } else {
+        q.rear->next = node;
+        q.rear       = node;
+    }
+
+    q.count            += 1;
+    q.total_waiting_kb += size_kb;
+    return q.count;   /* Posición 1-based */
 }
 
+/* -----------------------------------------------------------------------
+ * mem_queue_dequeue
+ * ----------------------------------------------------------------------- */
 mem_queue_node_t *mem_queue_dequeue(void) {
-    return NULL;
+    if (q.front == NULL) return NULL;
+
+    mem_queue_node_t *node = q.front;
+    q.front = node->next;
+    if (q.front == NULL) q.rear = NULL;   /* Cola quedó vacía */
+
+    q.count            -= 1;
+    q.total_waiting_kb -= node->size_kb;
+    node->next          = NULL;
+    return node;   /* El llamador debe hacer free() */
 }
 
+/* -----------------------------------------------------------------------
+ * mem_queue_peek
+ * ----------------------------------------------------------------------- */
 mem_queue_node_t *mem_queue_peek(void) {
-    return NULL;
+    return q.front;
 }
 
-void mem_queue_print(void) {
+/* -----------------------------------------------------------------------
+ * mem_queue_remove  —  elimina el nodo con el PID dado
+ * ----------------------------------------------------------------------- */
+int mem_queue_remove(int pid) {
+    mem_queue_node_t *prev = NULL;
+    mem_queue_node_t *cur  = q.front;
+
+    while (cur != NULL) {
+        if (cur->pid == pid) {
+            /* Desencadenar el nodo */
+            if (prev == NULL) {
+                q.front = cur->next;
+            } else {
+                prev->next = cur->next;
+            }
+            if (cur == q.rear) q.rear = prev;
+
+            q.count            -= 1;
+            q.total_waiting_kb -= cur->size_kb;
+            free(cur);
+            return 0;
+        }
+        prev = cur;
+        cur  = cur->next;
+    }
+    return -1;   /* PID no encontrado */
 }
 
+/* -----------------------------------------------------------------------
+ * mem_queue_length
+ * ----------------------------------------------------------------------- */
 int mem_queue_length(void) {
-    return 0;
+    return q.count;
 }
 
+/* -----------------------------------------------------------------------
+ * mem_queue_clear
+ * ----------------------------------------------------------------------- */
 void mem_queue_clear(void) {
+    mem_queue_node_t *cur = q.front;
+    while (cur != NULL) {
+        mem_queue_node_t *tmp = cur->next;
+        free(cur);
+        cur = tmp;
+    }
+    q.front            = NULL;
+    q.rear             = NULL;
+    q.count            = 0;
+    q.total_waiting_kb = 0;
+}
+
+/* -----------------------------------------------------------------------
+ * mem_queue_print
+ * ----------------------------------------------------------------------- */
+void mem_queue_print(void) {
+    printf("\n  +-----+--------+--------------------------+---------------------+\n");
+    printf("  | Pos |  PID   | Comando                  | Tiempo en espera    |\n");
+    printf("  +-----+--------+--------------------------+---------------------+\n");
+
+    if (q.front == NULL) {
+        printf("  |            (cola vacia — ningún proceso esperando)          |\n");
+        printf("  +-----+--------+--------------------------+---------------------+\n");
+        printf("  |  Procesos en espera: 0    Total KB solicitado: 0 KB         |\n");
+        printf("  +-----+--------+--------------------------+---------------------+\n\n");
+        return;
+    }
+
+    time_t now = time(NULL);
+    mem_queue_node_t *cur = q.front;
+    int pos = 1;
+
+    while (cur != NULL) {
+        long elapsed = (long)(now - cur->enqueued_at);
+        int  mm      = (int)(elapsed / 60);
+        int  ss      = (int)(elapsed % 60);
+
+        printf("  | %-3d | %-6d | %-24s | %02d:%02d                |\n",
+               pos, cur->pid, cur->command, mm, ss);
+
+        pos++;
+        cur = cur->next;
+    }
+
+    printf("  +-----+--------+--------------------------+---------------------+\n");
+    printf("  |  Procesos en espera : %-5d   Total KB solicitado: %-6d KB |\n",
+           q.count, q.total_waiting_kb);
+    printf("  +-----+--------+--------------------------+---------------------+\n\n");
 }
