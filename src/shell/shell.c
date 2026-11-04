@@ -1,17 +1,19 @@
 /*
- * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43) + Issue 7.1 (SIS-60)
+ * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43) + Issue 3.1 (SIS-46) + Issue 7.1 (SIS-60)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento modular.
  * Issue 2.2 (Aron): Ejecución asíncrona en background con operador '&':
  *                   extracción del argumento de memoria (KB), bifurcación
  *                   fg/bg en shell_dispatch y cosecha limpia antes del prompt.
+ * Issue 3.1 (Luis): Inicialización del subsistema de memoria física simulada.
  * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos (thread-demo y thread-stats).
  */
 
 #include "shell.h"
 #include "parser.h"
 #include "../process/process.h"
+#include "../memory/memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,11 +47,27 @@ static const BuiltinEntry BUILTINS[] = {
 #define BUILTIN_COUNT ((int)(sizeof(BUILTINS) / sizeof(BUILTINS[0])))
 
 /* -----------------------------------------------------------------------
- * shell_init — Inicialización del subsistema del shell
+ * shell_init — Inicialización de los subsistemas del sistema
+ *
+ * Issue 2.2 (SIS-43): Inicializa la tabla de control de background (bg_table).
+ * Issue 3.1 (SIS-46): Inicializa la memoria física simulada con 128 KB
+ * bajo el esquema de particionamiento dinámico First-Fit y muestra el
+ * estado del bloque libre inicial.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
-    /* Inicializar subsistemas del shell */
-    process_init(); /* Inicializa la tabla de control de procesos en background (Issue 2.2 / 2.3) */
+    /* Issue 2.2: Inicializar subsistema de procesos en background */
+    process_init();
+
+    /* Issue 3.1: Inicializar subsistema de memoria física simulada */
+    memory_init(128, MEM_ALGO_FIRST_FIT);
+
+    if (mem_state.block_list != NULL) {
+        printf("[miniOS Kernel] Memoria inicializada: %d KB RAM | Bloque inicial: %d-%d KB (%s)\n\n",
+               mem_state.total_ram_kb,
+               mem_state.block_list->start_kb,
+               mem_state.block_list->size_kb,
+               mem_state.block_list->status == BLOCK_FREE ? "BLOCK_FREE" : "BLOCK_USED");
+    }
 }
 
 /* -----------------------------------------------------------------------
