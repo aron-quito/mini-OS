@@ -101,7 +101,10 @@ int memory_alloc(int pid, int size_kb) {
 }
 
 int memory_free(int pid) {
-    // Stub base — Se implementará en Issue 3.4 (ff_free con coalescing)
+    if (memory_is_first_fit()) {
+        return ff_free(pid);
+    }
+    // Modo paginación en Milestone 5
     (void)pid;
     return 0;
 }
