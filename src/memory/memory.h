@@ -135,9 +135,24 @@ void mem_queue_process_waiting(void);
 int memory_free(int pid);
 
 /**
- * @brief Muestra el estado visual de la memoria (stub para Issue 6.1).
+ * @brief Muestra el estado visual de la memoria adaptándose al algoritmo activo (Issue 6.1).
  */
 void memory_view(void);
+
+/**
+ * @brief Renderiza el mapa de memoria en modo First-Fit (Issue 6.1).
+ */
+void render_mem_view_ff(void);
+
+/**
+ * @brief Renderiza el mapa de memoria en modo Paginación (Issue 6.1).
+ */
+void render_mem_view_pag(void);
+
+/**
+ * @brief Handler principal para los comandos mem-view y ram-view (Issue 6.1).
+ */
+int cmd_mem_view(int argc, char **argv);
 
 /**
  * @brief Libera toda la memoria dinámica de la lista enlazada al apagar el SO.
