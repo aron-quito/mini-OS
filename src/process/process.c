@@ -273,7 +273,6 @@ int process_execute_fg(char **argv) {
  * @return PID del hijo si se lanzó, -1 en error, 0 si fue encolado por RAM.
  * ========================================================================= */
 int process_execute_bg(char **argv, int mem_kb) {
-    const mem_config_t *cfg;
     pid_t pid;
     int   slot;
 
@@ -298,16 +297,19 @@ int process_execute_bg(char **argv, int mem_kb) {
      * Por ahora el stub siempre retorna 0 (éxito), por lo que el flujo de
      * "RAM insuficiente" y encolamiento está estructurado pero inactivo.
      */
-    if (memory_alloc(0, mem_kb) != 0) {
-        /* RAM simulada insuficiente: alertar y encolar sin crear proceso */
-        cfg = memory_get_config();
-        fprintf(stderr,
-                "[ALERTA RAM] Memoria insuficiente para '%s' "
-                "(Requerido: %d KB | RAM total simulada: %d KB).\n",
-                argv[0], mem_kb, cfg->total_ram_kb);
-        mem_queue_enqueue(0, mem_kb, argv[0]);
-        printf("[QUEUE] Proceso '%s' retenido en cola de espera de RAM.\n", argv[0]);
-        printf("[INFO] Se iniciará cuando otro proceso libere espacio.\n");
+    int alloc_result = memory_alloc(0, mem_kb);
+    if (alloc_result == -1) {
+        /*
+         * Rechazo permanente: mem_kb supera la RAM total — nunca cabrá.
+         * memory_alloc() ya imprimió el [ERROR]; solo retornamos 1 (error
+         * no-fatal) para no activar la señal de exit (-1) en shell_loop.
+         */
+        return 1;
+    }
+    if (alloc_result == 1) {
+        /* Encolado automáticamente por memory_alloc (RAM insuficiente temporal) */
+        printf("[INFO] '%s' en cola de espera de RAM (%d KB). Usa 'mem-queue' para ver el estado.\n",
+               argv[0], mem_kb);
         return 0;
     }
 
@@ -316,7 +318,7 @@ int process_execute_bg(char **argv, int mem_kb) {
 
     if (pid < 0) {
         perror("miniOS: error al crear proceso hijo en background (fork)");
-        memory_free(0); /* Liberar la reserva provisional */
+        memory_free(0); /* Liberar la reserva provisional bajo PID=0 */
         return -1;
     }
 
@@ -333,9 +335,20 @@ int process_execute_bg(char **argv, int mem_kb) {
     } else {
         /* ---------------------------------------------------------------
          * PROCESO PADRE — Retornar inmediatamente (asíncrono).
-         * Registrar el PID en bg_table con metadatos completos (Issue 2.3).
-         * NO se llama a waitpid() bloqueante aquí.
+         *
+         * memory_alloc() reservó RAM bajo PID=0 porque el PID real aún no
+         * existía. Ahora que tenemos el PID real del hijo, reasignamos el
+         * bloque para que memory_free(pid) lo encuentre cuando el proceso
+         * termine. Sin esto, la RAM quedaba "perdida" bajo PID=0 (leak).
          * --------------------------------------------------------------- */
+        printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n", pid, getpid());
+
+        if (memory_reassign_pid(0, pid) != 0) {
+            fprintf(stderr,
+                    "[ADVERTENCIA] No se pudo reasignar el bloque de RAM de PID 0 a PID %d.\n",
+                    pid);
+        }
+
         slot = bg_table_add(pid, getpid(), argv, mem_kb);
 
         if (slot < 0) {
@@ -346,7 +359,6 @@ int process_execute_bg(char **argv, int mem_kb) {
                     MAX_BG_PROCESSES, pid);
         }
 
-        printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n", pid, getpid());
         printf("[RAM ALLOC] PID %d asignado en RAM simulada: %d KB\n", pid, mem_kb);
         printf("[BG] Proceso '%s' corriendo en background | PID: %d | RAM: %d KB\n\n",
                argv[0], pid, mem_kb);

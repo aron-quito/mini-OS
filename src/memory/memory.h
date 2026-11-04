@@ -135,6 +135,20 @@ void mem_queue_process_waiting(void);
 int memory_free(int pid);
 
 /**
+ * @brief Reasigna el PID de un bloque de memoria de old_pid a new_pid.
+ *
+ * Se usa en process_execute_bg() justo después del fork(): la memoria fue
+ * reservada con PID=0 como marcador provisional (el PID real aún no existía).
+ * Una vez obtenido el PID real del hijo, esta función actualiza el bloque
+ * para que memory_free(real_pid) lo encuentre al finalizar el proceso.
+ *
+ * @param old_pid  PID actual del bloque (normalmente 0).
+ * @param new_pid  PID real del proceso hijo.
+ * @return 0 si se reasignó correctamente, -1 si no se encontró el bloque.
+ */
+int memory_reassign_pid(int old_pid, int new_pid);
+
+/**
  * @brief Muestra el estado visual de la memoria (stub para Issue 6.1).
  */
 void memory_view(void);

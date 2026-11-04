@@ -54,7 +54,9 @@ int ff_alloc(int pid, int size_kb) {
             }
             curr->status = BLOCK_USED;
             curr->process_id = pid;
-            printf("[FF] PID %d asignado en dirección %d KB (%d KB)\n", pid, curr->start_kb, size_kb);
+            if (pid > 0) {
+                printf("[FF] PID %d asignado en dirección %d KB (%d KB)\n", pid, curr->start_kb, size_kb);
+            }
             return 0; // Asignación exitosa
         }
         curr = curr->next;
