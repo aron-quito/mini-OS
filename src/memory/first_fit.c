@@ -72,10 +72,61 @@ int first_fit_alloc(int pid, int size_kb) {
     return ff_alloc(pid, size_kb);
 }
 
-int first_fit_free(int pid) {
-    (void)pid;
-    // Stub base — Se implementará en Issue 3.4 (SIS-49)
+/**
+ * @brief Coalescencia: fusiona bloques libres adyacentes (Issue 3.4).
+ *
+ * Tras una fusión curr no avanza, de modo que varias fusiones consecutivas
+ * se resuelven en una sola pasada.
+ *
+ * @return Cantidad de fusiones realizadas.
+ */
+int merge_adjacent_blocks(void) {
+    int merges = 0;
+    MemBlock *curr = mem_state.block_list;
+
+    while (curr != NULL && curr->next != NULL) {
+        if (curr->status == BLOCK_FREE && curr->next->status == BLOCK_FREE) {
+            MemBlock *temp = curr->next;
+            curr->size_kb += temp->size_kb;
+            curr->next = temp->next;
+            free(temp);
+            merges++;
+        } else {
+            curr = curr->next;
+        }
+    }
+    return merges;
+}
+
+/**
+ * @brief Libera los bloques ocupados por un PID y aplica coalescencia (Issue 3.4).
+ *
+ * @param pid PID del proceso cuya memoria se libera.
+ * @return 0 en éxito, -1 si el PID no tiene bloques asignados.
+ */
+int ff_free(int pid) {
+    int found = 0;
+
+    for (MemBlock *curr = mem_state.block_list; curr != NULL; curr = curr->next) {
+        if (curr->status == BLOCK_USED && curr->process_id == pid) {
+            curr->status = BLOCK_FREE;
+            curr->process_id = -1;
+            found++;
+        }
+    }
+
+    if (found == 0) {
+        fprintf(stderr, "[FF] Advertencia: el PID %d no tiene bloques asignados en memoria\n", pid);
+        return -1;
+    }
+
+    int merged = merge_adjacent_blocks();
+    printf("[FF] Memoria liberada para PID %d. Bloques fusionados: %d\n", pid, merged);
     return 0;
+}
+
+int first_fit_free(int pid) {
+    return ff_free(pid);
 }
 
 void first_fit_view(void) {

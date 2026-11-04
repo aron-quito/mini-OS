@@ -16,6 +16,18 @@ extern int block_counter;
 int ff_alloc(int pid, int size_kb);
 
 /**
+ * @brief Libera los bloques de un PID y aplica coalescencia — Issue 3.4.
+ * @return 0 en éxito, -1 si el PID no tiene memoria asignada.
+ */
+int ff_free(int pid);
+
+/**
+ * @brief Fusiona bloques libres adyacentes — Issue 3.4.
+ * @return Número de fusiones realizadas.
+ */
+int merge_adjacent_blocks(void);
+
+/**
  * @brief Inicializa la memoria bajo el esquema First-Fit con 1 único bloque libre gigante.
  */
 void first_fit_init(int total_kb);

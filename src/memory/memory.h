@@ -93,6 +93,12 @@ int memory_alloc(int pid, int size_kb);
  */
 int ff_alloc(int pid, int size_kb);
 
+/** @brief Liberación First-Fit con coalescencia — Issue 3.4. */
+int ff_free(int pid);
+
+/** @brief Fusiona bloques libres adyacentes; retorna nº de fusiones — Issue 3.4. */
+int merge_adjacent_blocks(void);
+
 /**
  * @brief Libera la memoria de un proceso (stub para Issue 3.4 / ff_free).
  */
