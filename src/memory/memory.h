@@ -48,6 +48,9 @@ typedef struct {
 /* Variable global compartida del subsistema de memoria (Issue 3.1) */
 extern MemoryState mem_state;
 
+/* Contador global de bloques para IDs únicos (Issue 3.3) */
+extern int block_counter;
+
 /* Configuración persistente del subsistema */
 typedef struct {
     int total_ram_kb;
@@ -81,9 +84,14 @@ void memory_init(int total_ram_kb, mem_algorithm_t algo);
 const mem_config_t *memory_get_config(void);
 
 /**
- * @brief Asigna memoria a un proceso (stub para Issue 3.3 / ff_alloc).
+ * @brief Asigna memoria a un proceso según el algoritmo activo (Issue 3.3).
  */
 int memory_alloc(int pid, int size_kb);
+
+/**
+ * @brief Asignación contigua First-Fit con partición dinámica (split) — Issue 3.3.
+ */
+int ff_alloc(int pid, int size_kb);
 
 /**
  * @brief Libera la memoria de un proceso (stub para Issue 3.4 / ff_free).

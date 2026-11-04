@@ -1,13 +1,19 @@
 #ifndef FIRST_FIT_H
 #define FIRST_FIT_H
 
-typedef struct ff_block {
-    int start_kb;
-    int size_kb;
-    int is_free;
-    int pid;
-    struct ff_block *next;
-} ff_block_t;
+#include "memory.h"
+
+/* Contador global de bloques para asignación de IDs únicos en splits */
+extern int block_counter;
+
+/**
+ * @brief Asigna memoria bajo el esquema First-Fit con partición dinámica (split) — Issue 3.3.
+ *
+ * @param pid     PID del proceso solicitante.
+ * @param size_kb Cantidad de KB solicitados.
+ * @return 0 en éxito, -1 si no hay bloque libre con capacidad suficiente.
+ */
+int ff_alloc(int pid, int size_kb);
 
 /**
  * @brief Inicializa la memoria bajo el esquema First-Fit con 1 único bloque libre gigante.
@@ -15,17 +21,17 @@ typedef struct ff_block {
 void first_fit_init(int total_kb);
 
 /**
- * @brief Asigna memoria buscando el primer bloque libre con capacidad suficiente y divide (split).
+ * @brief Alias de ff_alloc para compatibilidad.
  */
 int first_fit_alloc(int pid, int size_kb);
 
 /**
- * @brief Libera los bloques asociados a un PID y aplica coalescencia adyacente.
+ * @brief Libera los bloques asociados a un PID y aplica coalescencia adyacente (Issue 3.4).
  */
 int first_fit_free(int pid);
 
 /**
- * @brief Visualiza los bloques de memoria First-Fit.
+ * @brief Visualiza los bloques de memoria First-Fit (Issue 6.1).
  */
 void first_fit_view(void);
 
