@@ -827,6 +827,13 @@ void shell_loop(void) {
         /* Ignora lineas completamente vacias (solo Enter) */
         if (strlen(line) == 0) continue;
 
+        /*
+         * Cosechar procesos que hayan terminado mientras el usuario escribía.
+         * Garantiza que comandos como 'mem-view' o 'ps-mini' vean el estado 100%
+         * actualizado en tiempo real.
+         */
+        process_reap_bg();
+
         /* Despacha el comando; si retorna -1 es senal de exit */
         if (shell_dispatch(line) == -1) break;
     }
