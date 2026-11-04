@@ -40,6 +40,7 @@ void mem_reset_blocks(void) {
         exit(EXIT_FAILURE);
     }
 
+    block_counter = 0;
     initial_block->id = 0;
     initial_block->start_kb = 0;
     initial_block->size_kb = mem_state.total_ram_kb;
@@ -92,9 +93,10 @@ const mem_config_t *memory_get_config(void) {
 }
 
 int memory_alloc(int pid, int size_kb) {
-    // Stub base — Se implementará en Issue 3.3 (ff_alloc con split)
-    (void)pid;
-    (void)size_kb;
+    if (memory_is_first_fit()) {
+        return ff_alloc(pid, size_kb);
+    }
+    // Modo paginación en Milestone 5
     return 0;
 }
 
