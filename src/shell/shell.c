@@ -47,6 +47,7 @@ static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_alloc(Command *cmd);            /* Issue 4.2 (SIS-51) */
 static int builtin_mem_free(Command *cmd);             /* Issue 4.2 (SIS-51) */
 static int builtin_mem_translate(Command *cmd);        /* Issue 5.2 (SIS-55) */
+static int builtin_mem_page_table(Command *cmd);       /* Issue 5.3 (SIS-56) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
@@ -63,20 +64,21 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",          builtin_help          },
-    { "clear",         builtin_clear         },
-    { "exit",          builtin_exit          },
-    { "ps-mini",       builtin_ps_mini       }, /* Issue 2.3 (SIS-44) */
-    { "thread-demo",   builtin_thread_demo   }, /* Issue 7.3 (SIS-62) */
-    { "thread-stats",  builtin_thread_stats  }, /* Issue 7.4 (SIS-63) */
+    { "help",           builtin_help           },
+    { "clear",          builtin_clear          },
+    { "exit",           builtin_exit           },
+    { "ps-mini",        builtin_ps_mini        }, /* Issue 2.3 (SIS-44) */
+    { "thread-demo",    builtin_thread_demo    }, /* Issue 7.3 (SIS-62) */
+    { "thread-stats",   builtin_thread_stats   }, /* Issue 7.4 (SIS-63) */
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
-    { "mem-config",    builtin_mem_config    },
-    { "mem-status",    builtin_mem_status    },
+    { "mem-config",     builtin_mem_config     },
+    { "mem-status",     builtin_mem_status     },
     /* Issue 4.2 (SIS-51): Asignacion y liberacion de memoria con encolado reactivo */
-    { "mem-alloc",     builtin_mem_alloc     },
-    { "mem-free",      builtin_mem_free      },
-    /* Issue 5.2 (SIS-55): Traduccion de direccion logica a fisica en Paginacion */
-    { "mem-translate", builtin_mem_translate },
+    { "mem-alloc",      builtin_mem_alloc      },
+    { "mem-free",       builtin_mem_free       },
+    /* Issue 5.2 / 5.3 (SIS-55 / SIS-56): Comandos de Paginacion */
+    { "mem-translate",  builtin_mem_translate  },
+    { "mem-page-table", builtin_mem_page_table },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -155,6 +157,7 @@ static int builtin_help(Command *cmd) {
         printf("    mem-alloc <pid> <kb>     Asigna memoria RAM a un proceso o lo encola.\n");
         printf("    mem-free <pid>           Libera la memoria ocupada por un proceso.\n");
         printf("    mem-translate <pid> <d>  Traduce una direccion logica a fisica (modo PAG).\n");
+        printf("    mem-page-table <pid>     Visualiza la tabla de paginas del proceso (modo PAG).\n");
         printf("    mem-view                 Muestra el mapa visual de bloques (Issue 6.1).\n");
         printf("\n");
         return 0;
@@ -265,6 +268,13 @@ static int builtin_help(Command *cmd) {
         printf("      dir_fisica   = (marco_fisico * page_size_kb) + offset\n\n");
         printf("    Ejemplo:\n");
         printf("      mem-translate 42 192\n\n");
+    } else if (strcmp(topic, "mem-page-table") == 0) {
+        printf("\n  mem-page-table <pid>\n");
+        printf("    Visualiza la tabla de paginas asociada al proceso <pid> (exclusivo de Paginacion).\n");
+        printf("    Muestra para cada pagina logica su marco fisico, estado de validez (SI/NO)\n");
+        printf("    y su direccion base fisica (marco_fisico * page_size_kb).\n\n");
+        printf("    Ejemplo:\n");
+        printf("      mem-page-table 42\n\n");
     } else if (strcmp(topic, "mem-view") == 0) {
         printf("\n  mem-view\n");
         printf("    Visualiza el mapa de asignacion de marcos/paginas y fragmentacion de memoria.\n\n");
@@ -582,6 +592,13 @@ static int builtin_mem_translate(Command *cmd) {
     }
 
     return (cmd_mem_translate((int)pid, (int)dir_logica) == 0) ? 0 : 1;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 5.3 (SIS-56) -- Handler de mem-page-table <pid>
+ * ----------------------------------------------------------------------- */
+static int builtin_mem_page_table(Command *cmd) {
+    return cmd_mem_page_table(cmd->argc, cmd->argv);
 }
 
 /* -----------------------------------------------------------------------

@@ -161,11 +161,13 @@ int memory_alloc(int pid, int size_kb) {
 
 int memory_free(int pid) {
     if (memory_is_first_fit()) {
-        return ff_free(pid);
+        int r = ff_free(pid);
+        if (r == 0) {
+            mem_queue_process_waiting();
+        }
+        return r;
     }
-    // Modo paginación en Milestone 5
-    (void)pid;
-    return 0;
+    return paging_free(pid);
 }
 
 void memory_view(void) {

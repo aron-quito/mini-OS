@@ -65,9 +65,34 @@ int pag_alloc(int pid, int size_kb);
 int paging_alloc(int pid, int size_kb);
 
 /**
- * @brief Libera los marcos ocupados por un proceso (Issue 5.3).
+ * @brief Libera los marcos ocupados por un proceso, invalida su PageTable
+ *        y despierta procesos en espera (mem_queue_process_waiting) — Issue 5.3.
+ *
+ * @param pid PID del proceso cuyos marcos se liberarán.
+ */
+void pag_free(int pid);
+
+/**
+ * @brief Libera los marcos ocupados por un proceso retornando estado (Issue 5.3).
+ *
+ * @param pid PID del proceso.
+ * @return 0 si se liberó exitosamente, -1 si el PID no tenía páginas asignadas.
  */
 int paging_free(int pid);
+
+/**
+ * @brief Visualiza la tabla de páginas de un proceso (comando mem-page-table <pid>) — Issue 5.3.
+ *
+ * @param argc Cantidad de argumentos del comando.
+ * @param argv Arreglo de argumentos (argv[1] = "<pid>").
+ * @return 0 en éxito, 1 en error de validación o proceso inexistente.
+ */
+int cmd_mem_page_table(int argc, char **argv);
+
+/**
+ * @brief Intenta asignar memoria a los procesos en el frente de mem_queue (Issue 4.4 / 5.3).
+ */
+void mem_queue_process_waiting(void);
 
 /**
  * @brief Traduce una dirección lógica (en KB) a dirección física e imprime el desglose — Issue 5.2.
