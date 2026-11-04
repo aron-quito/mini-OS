@@ -130,7 +130,7 @@ int first_fit_free(int pid) {
 }
 
 void first_fit_view(void) {
-    // Stub base — Se implementará en Issue 6.1 (SIS-57)
+    render_mem_view_ff();
 }
 
 void first_fit_cleanup(void) {
