@@ -34,6 +34,10 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 | **SIS-47** | 3.2 | Comandos de configuración de RAM y presets (`mem-config`, `mem-status`) | ✅ Completado (`Done`) | [SIS-47: Configuración de RAM y Presets](sis-47.md) |
 | **SIS-48** | 3.3 | Algoritmo First-Fit — Asignación contigua (`ff_alloc`) y split | ✅ Completado (`Done`) | [SIS-48: Asignación Contigua First-Fit y Split](sis-48.md) |
 | **SIS-49** | 3.4 | Algoritmo First-Fit — Liberación (`ff_free`) y coalescencia | ✅ Completado (`Done`) | [SIS-49: Liberación First-Fit y Coalescencia](sis-49.md) |
+| **SIS-50** | 4.1 | Estructura de cola FIFO para procesos en espera (`mem_queue`) | ✅ Completado (`Done`) | *Mergeado en PR #14* |
+| **SIS-54** | 5.1 | Estructuras de paginación y asignación de marcos (`pag_alloc`) | ✅ Completado (`Done`) | [SIS-54: Estructuras de Paginación y Asignación de Marcos](sis-54.md) |
+| **SIS-55** | 5.2 | Traducción de dirección lógica a física (`mem-translate`) | ⏳ Siguiente (`Todo`) | *Próximamente* |
+| **SIS-56** | 5.3 | Visualizador de tabla de páginas (`mem-page-table`) y `pag_free` | 🔒 Bloqueado por SIS-55 | *Próximamente* |
 
 ---
 

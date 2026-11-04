@@ -19,7 +19,7 @@ SRCS = src/main.c \
 
 OBJS = $(SRCS:.c=.o)
 
-.PHONY: all clean run debug
+.PHONY: all clean run debug test
 
 all: $(TARGET)
 
@@ -28,6 +28,11 @@ $(TARGET): $(OBJS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+test: $(OBJS) tests/test_paging.c
+	$(CC) $(CFLAGS) tests/test_paging.c src/memory/memory.o src/memory/first_fit.o src/memory/paging.o src/memory/mem_queue.o -o test_runner $(LDFLAGS)
+	./test_runner
+	rm -f test_runner
 
 debug: CFLAGS += -g3 -O0 -DDEBUG
 debug: clean $(TARGET)
