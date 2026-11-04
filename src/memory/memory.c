@@ -4,12 +4,15 @@
  *
  * Issue 3.1 (SIS-46): Modela la RAM como una lista enlazada ordenada por start_kb,
  * arrancando con un único bloque gigante libre que cubre toda la memoria.
+ * Issue 4.2 (SIS-51): Encolado automático en mem_queue cuando ff_alloc falla
+ * por memoria insuficiente o fragmentación externa.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "mem_queue.h"  /* Issue 4.2 (SIS-51): encolado reactivo */
 
 /* Estado global de la memoria física simulada (Issue 3.1) */
 MemoryState mem_state;
@@ -67,6 +70,9 @@ void mem_init(void) {
 
     // Inicializa la lista enlazada con el bloque gigante libre
     mem_reset_blocks();
+
+    /* Issue 4.2: inicializar la cola de espera junto con la memoria */
+    mem_queue_init();
 }
 
 /**
@@ -92,13 +98,46 @@ const mem_config_t *memory_get_config(void) {
     return &s_mem_config;
 }
 
+/**
+ * @brief Asigna memoria a un proceso. Si falla, encola automáticamente (Issue 4.2).
+ *
+ * Flujo:
+ *   1. Intenta asignar con ff_alloc (o pag_alloc en Milestone 5).
+ *   2. Si la asignación falla (-1): muestra alerta y encola el proceso en mem_queue.
+ *   3. Si la asignación tiene éxito (0): retorna 0 normalmente.
+ *
+ * @param pid       PID del proceso solicitante.
+ * @param size_kb   Kilobytes de RAM solicitados.
+ * @param command   Nombre del comando (para registrar en la cola).
+ * @return 0 si se asignó exitosamente, 1 si fue encolado, -1 en error grave.
+ */
 int memory_alloc(int pid, int size_kb) {
+    int result;
+
     if (memory_is_first_fit()) {
-        return ff_alloc(pid, size_kb);
+        result = ff_alloc(pid, size_kb);
+    } else {
+        /* Paginación — Milestone 5; por ahora pasa sin asignar */
+        result = 0;
     }
-    // Modo paginación en Milestone 5
-    return 0;
+
+    if (result == -1) {
+        /* Memoria insuficiente o fragmentación — encolar automáticamente */
+        printf("[ALERTA] Memoria RAM insuficiente para asignar %d KB al PID %d.\n",
+               size_kb, pid);
+        int pos = mem_queue_enqueue(pid, size_kb, "");
+        if (pos < 0) {
+            fprintf(stderr, "[ERROR] No se pudo encolar el proceso PID %d (malloc fallido).\n", pid);
+            return -1;
+        }
+        printf("[QUEUE] Proceso PID %d encolado en cola de espera (Posicion: %d).\n",
+               pid, pos);
+        return 1;  /* Encolado exitoso */
+    }
+
+    return 0;  /* Asignado exitosamente */
 }
+
 
 int memory_free(int pid) {
     if (memory_is_first_fit()) {
@@ -124,6 +163,7 @@ void memory_cleanup(void) {
         current = next;
     }
     mem_state.block_list = NULL;
+    mem_queue_clear();  /* Issue 4.2: limpiar cola de espera también */
 }
 
 /* =========================================================================
