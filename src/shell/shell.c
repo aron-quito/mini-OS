@@ -1,7 +1,7 @@
 /*
  * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43)
- *           + Issue 3.1 (SIS-46) + Issue 3.2 (SIS-47) + Issue 7.1 (SIS-60)
- *           + Issue 7.3 (SIS-62) + Issue 7.4 (SIS-63)
+ *           + Issue 2.3 (SIS-44) + Issue 3.1 (SIS-46) + Issue 3.2 (SIS-47)
+ *           + Issue 7.1 (SIS-60) + Issue 7.3 (SIS-62) + Issue 7.4 (SIS-63)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento
@@ -9,6 +9,9 @@
  * Issue 2.2 (Aron): Ejecucion asincrona en background con operador '&':
  *                   extraccion del argumento de memoria (KB), bifurcacion
  *                   fg/bg en shell_dispatch y cosecha limpia antes del prompt.
+ * Issue 2.3 (Aron): Tabla de control de procesos en background (bg_table).
+ *                   Registra PID, PPID, comando, mem_kb y estado (RUNNING/
+ *                   FINISHED/KILLED). Expone el comando ps-mini como built-in.
  * Issue 3.1 (Luis): Inicializacion del subsistema de memoria fisica simulada.
  * Issue 3.2 (Luis): Comandos mem-config (ram/page/frames/default) y mem-status.
  * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos.
@@ -37,6 +40,7 @@ static int builtin_thread_demo(Command *cmd);          /* Issue 7.3 (SIS-62) */
 static int builtin_thread_stats(Command *cmd);         /* Issue 7.4 (SIS-63) */
 static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
+static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
 /* -----------------------------------------------------------------------
@@ -55,6 +59,7 @@ static const BuiltinEntry BUILTINS[] = {
     { "help",         builtin_help         },
     { "clear",        builtin_clear        },
     { "exit",         builtin_exit         },
+    { "ps-mini",      builtin_ps_mini      }, /* Issue 2.3 (SIS-44) */
     { "thread-demo",  builtin_thread_demo  }, /* Issue 7.3 (SIS-62) */
     { "thread-stats", builtin_thread_stats }, /* Issue 7.4 (SIS-63) */
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
@@ -244,6 +249,18 @@ static int builtin_exit(Command *cmd) {
 
     printf("[INFO] Finalizando miniOS. Hasta luego!\n");
     return -1; /* senal de salida para shell_loop */
+}
+
+/**
+ * ps-mini — Muestra la tabla de control de procesos del background.
+ *
+ * Delega directamente en process_list_mini() (Issue 2.3 / SIS-44).
+ * No acepta argumentos; si se pasan, los ignora.
+ */
+static int builtin_ps_mini(Command *cmd) {
+    (void)cmd;
+    process_list_mini();
+    return 0;
 }
 
 /* -----------------------------------------------------------------------

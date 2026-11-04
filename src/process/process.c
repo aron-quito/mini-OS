@@ -16,63 +16,111 @@
 #include <sys/types.h>
 #include <errno.h>
 
-/* -----------------------------------------------------------------------
- * Tabla interna de procesos en background
+/* =========================================================================
+ * Tabla de procesos en background (Issue 2.3 / SIS-44)
  *
- * Registra los procesos lanzados con '&' para poder cosecharlos en
- * process_reap_bg() y asociar su PID con los KB de RAM reservados.
- * Issue 2.3 / SIS-44 expandirá esta tabla con estado, PPID y comando.
- * ----------------------------------------------------------------------- */
-typedef struct {
-    pid_t pid;
-    int   mem_kb;
-    int   used;         /* 1 = slot ocupado, 0 = libre */
-} bg_slot_t;
+ * Array estático de BgProcess. Cada slot puede estar libre (used=0) u ocupado
+ * (used=1). Un slot sigue "ocupado" incluso cuando el proceso termina para
+ * que ps-mini pueda mostrar el historial completo de la sesión.
+ *
+ * La distinción entre proceso activo y terminado se hace con el campo status:
+ *   PROC_RUNNING  → hijo sigue ejecutándose.
+ *   PROC_FINISHED → terminó normalmente (WIFEXITED).
+ *   PROC_KILLED   → terminado por señal (WIFSIGNALED).
+ * ========================================================================= */
+static BgProcess s_bg_table[MAX_BG_PROCESSES];
 
-static bg_slot_t s_bg_table[MAX_BG_PROCESSES];
-
+/* -------------------------------------------------------------------------
+ * process_init — Inicializa todos los slots de la tabla a su estado vacío.
+ * Debe llamarse una sola vez desde shell_init().
+ * ------------------------------------------------------------------------- */
 void process_init(void) {
     for (int i = 0; i < MAX_BG_PROCESSES; i++) {
-        s_bg_table[i].pid    = 0;
-        s_bg_table[i].mem_kb = 0;
-        s_bg_table[i].used   = 0;
+        s_bg_table[i].pid       = 0;
+        s_bg_table[i].ppid      = 0;
+        s_bg_table[i].command[0]= '\0';
+        s_bg_table[i].mem_kb    = 0;
+        s_bg_table[i].status    = PROC_RUNNING;
+        s_bg_table[i].exit_code = 0;
+        s_bg_table[i].used      = 0;
     }
 }
 
-/* -----------------------------------------------------------------------
- * bg_table_add — Registra un proceso nuevo en la tabla interna.
- * Retorna 1 si hubo espacio, 0 si la tabla está llena.
- * ----------------------------------------------------------------------- */
-static int bg_table_add(pid_t pid, int mem_kb) {
+/* -------------------------------------------------------------------------
+ * bg_table_add — Registra un proceso recién lanzado en la tabla.
+ *
+ * Rellena un slot libre con todos los metadatos del proceso:
+ *   - pid, ppid provienen del fork().
+ *   - command se construye concatenando argv[].
+ *   - mem_kb es lo reservado en la RAM simulada.
+ *   - status se fija a PROC_RUNNING.
+ *
+ * @return Índice del slot asignado, o -1 si la tabla está llena.
+ * ------------------------------------------------------------------------- */
+static int bg_table_add(pid_t pid, pid_t ppid,
+                        char **argv, int mem_kb) {
     for (int i = 0; i < MAX_BG_PROCESSES; i++) {
         if (!s_bg_table[i].used) {
-            s_bg_table[i].pid    = pid;
-            s_bg_table[i].mem_kb = mem_kb;
-            s_bg_table[i].used   = 1;
-            return 1;
+            s_bg_table[i].pid       = pid;
+            s_bg_table[i].ppid      = ppid;
+            s_bg_table[i].mem_kb    = mem_kb;
+            s_bg_table[i].status    = PROC_RUNNING;
+            s_bg_table[i].exit_code = 0;
+            s_bg_table[i].used      = 1;
+
+            /* Construir la cadena de comando a partir de argv[] */
+            s_bg_table[i].command[0] = '\0';
+            for (int j = 0; argv[j] != NULL; j++) {
+                if (j > 0) {
+                    strncat(s_bg_table[i].command, " ",
+                            sizeof(s_bg_table[i].command)
+                            - strlen(s_bg_table[i].command) - 1);
+                }
+                strncat(s_bg_table[i].command, argv[j],
+                        sizeof(s_bg_table[i].command)
+                        - strlen(s_bg_table[i].command) - 1);
+            }
+
+            return i;
         }
     }
-    return 0; /* Tabla llena */
+    return -1; /* Tabla llena */
 }
 
-/* -----------------------------------------------------------------------
- * bg_table_remove — Elimina un PID de la tabla y retorna sus KB reservados.
- * Retorna mem_kb si se encontró el PID, 0 si no estaba registrado.
- * ----------------------------------------------------------------------- */
-static int bg_table_remove(pid_t pid) {
+/* -------------------------------------------------------------------------
+ * bg_table_set_finished — Actualiza el estado de un proceso al finalizar.
+ *
+ * A diferencia de la versión anterior (que eliminaba el slot), este diseño
+ * conserva el registro para que ps-mini pueda mostrar el historial completo
+ * de la sesión (tanto RUNNING como FINISHED/KILLED).
+ *
+ * @param pid       PID del proceso cosechado.
+ * @param status    Valor raw de waitpid(); se analiza con WIFEXITED/WIFSIGNALED.
+ * @return mem_kb del proceso si se encontró el PID, 0 si no estaba registrado.
+ * ------------------------------------------------------------------------- */
+static int bg_table_set_finished(pid_t pid, int wait_status) {
     for (int i = 0; i < MAX_BG_PROCESSES; i++) {
         if (s_bg_table[i].used && s_bg_table[i].pid == pid) {
             int mem_kb = s_bg_table[i].mem_kb;
-            s_bg_table[i].pid    = 0;
+
+            if (WIFEXITED(wait_status)) {
+                s_bg_table[i].status    = PROC_FINISHED;
+                s_bg_table[i].exit_code = WEXITSTATUS(wait_status);
+            } else if (WIFSIGNALED(wait_status)) {
+                s_bg_table[i].status    = PROC_KILLED;
+                s_bg_table[i].exit_code = WTERMSIG(wait_status);
+            }
+
+            /* mem_kb se pone a 0 para indicar que ya fue liberada */
             s_bg_table[i].mem_kb = 0;
-            s_bg_table[i].used   = 0;
+
             return mem_kb;
         }
     }
-    return 0;
+    return 0; /* PID no estaba en la tabla (proceso de foreground u otro) */
 }
 
-/* -----------------------------------------------------------------------
+/* =========================================================================
  * resolve_command_path — Verifica si argv[0] es ejecutable en el PATH.
  *
  * Una shell real (Bash/Zsh) NUNCA llama a fork() para un comando que no
@@ -89,7 +137,7 @@ static int bg_table_remove(pid_t pid) {
  *
  * @param name  El nombre o ruta del programa (argv[0]).
  * @return 1 si se encontró un ejecutable válido, 0 en caso contrario.
- * ----------------------------------------------------------------------- */
+ * ========================================================================= */
 static int resolve_command_path(const char *name) {
     /* Rutas absolutas o relativas: verificar directamente */
     if (strchr(name, '/')) {
@@ -125,7 +173,7 @@ static int resolve_command_path(const char *name) {
     return 0; /* No encontrado en ninguna carpeta del PATH */
 }
 
-/* -----------------------------------------------------------------------
+/* =========================================================================
  * process_execute_fg — Ejecuta un comando externo en primer plano.
  *
  * Implementa el patrón correcto de una shell real (Issue 2.1 / SIS-42):
@@ -137,7 +185,7 @@ static int resolve_command_path(const char *name) {
  *
  * @param argv  Arreglo terminado en NULL (argv[0]=comando, argv[1..n]=args).
  * @return Código de retorno del proceso hijo, o -1 si falla fork/waitpid.
- * ----------------------------------------------------------------------- */
+ * ========================================================================= */
 int process_execute_fg(char **argv) {
     if (!argv || !argv[0]) {
         return -1;
@@ -195,7 +243,7 @@ int process_execute_fg(char **argv) {
     return 0;
 }
 
-/* -----------------------------------------------------------------------
+/* =========================================================================
  * process_execute_bg — Ejecuta un comando en segundo plano (Issue 2.2 / SIS-43).
  *
  * Flujo completo:
@@ -205,7 +253,7 @@ int process_execute_fg(char **argv) {
  *     - Si tiene éxito: continuar con el fork.
  *  3. fork() + execvp() en el hijo.
  *  4. El padre NO llama a waitpid() bloqueante: retorna inmediatamente al shell.
- *  5. El padre registra el PID en la tabla interna (bg_table) vinculando mem_kb.
+ *  5. El padre registra el PID en bg_table con metadatos completos (Issue 2.3).
  *
  * La notificación de fin del proceso se muestra más adelante en process_reap_bg(),
  * que se llama justo antes de cada prompt para evitar solapamientos.
@@ -214,7 +262,7 @@ int process_execute_fg(char **argv) {
  *                por shell_dispatch antes de llamar a esta función.
  * @param mem_kb  Kilobytes de RAM simulada a reservar para este proceso.
  * @return PID del hijo si se lanzó, -1 en error, 0 si fue encolado por RAM.
- * ----------------------------------------------------------------------- */
+ * ========================================================================= */
 int process_execute_bg(char **argv, int mem_kb) {
     if (!argv || !argv[0]) {
         return -1;
@@ -272,10 +320,18 @@ int process_execute_bg(char **argv, int mem_kb) {
     } else {
         /* ---------------------------------------------------------------
          * PROCESO PADRE — Retornar inmediatamente (asíncrono).
-         * Registrar el PID en la tabla interna y mostrar el banner de BG.
+         * Registrar el PID en bg_table con metadatos completos (Issue 2.3).
          * NO se llama a waitpid() bloqueante aquí.
          * --------------------------------------------------------------- */
-        bg_table_add(pid, mem_kb);
+        int slot = bg_table_add(pid, getpid(), argv, mem_kb);
+
+        if (slot < 0) {
+            /* Tabla llena: advertir pero el proceso ya está corriendo */
+            fprintf(stderr,
+                    "[ADVERTENCIA] bg_table llena (%d slots). "
+                    "El proceso PID %d correrá pero no aparecerá en ps-mini.\n",
+                    MAX_BG_PROCESSES, pid);
+        }
 
         printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n", pid, getpid());
         printf("[RAM ALLOC] PID %d asignado en RAM simulada: %d KB\n", pid, mem_kb);
@@ -286,19 +342,19 @@ int process_execute_bg(char **argv, int mem_kb) {
     return pid;
 }
 
-/* -----------------------------------------------------------------------
+/* =========================================================================
  * process_reap_bg — Cosecha procesos en background que hayan terminado.
  *
  * Debe llamarse justo ANTES de imprimir el prompt en shell_loop().
  * Usa waitpid(-1, &status, WNOHANG) en un loop hasta que no queden
  * hijos terminados que recoger. Por cada proceso cosechado:
- *   - Elimina su entrada de la tabla interna (bg_table_remove).
+ *   - Actualiza su estado en la bg_table (PROC_FINISHED o PROC_KILLED).
  *   - Llama a memory_free() para liberar su RAM simulada.
  *   - Imprime el informe de finalización en una línea limpia.
  *
  * Sin esta función, la notificación de fin llegaría via SIGCHLD en
  * medio de la entrada del usuario, solapándose con el texto que escribe.
- * ----------------------------------------------------------------------- */
+ * ========================================================================= */
 void process_reap_bg(void) {
     int status;
     pid_t pid;
@@ -308,7 +364,8 @@ void process_reap_bg(void) {
      * El loop recoge todos los que hayan finalizado desde la última llamada.
      */
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        int mem_kb = bg_table_remove(pid);
+        /* Actualizar estado en la tabla y recuperar los KB que tenía */
+        int mem_kb = bg_table_set_finished(pid, status);
 
         /* Liberar la RAM simulada asociada a este proceso */
         if (mem_kb > 0) {
@@ -326,10 +383,81 @@ void process_reap_bg(void) {
     }
 }
 
-/* -----------------------------------------------------------------------
- * process_list_mini — Muestra la tabla de procesos en background (ps-mini).
- * Issue 2.4 (SIS-45): Imprime PID, RAM y estado de cada proceso en bg_table.
- * ----------------------------------------------------------------------- */
+/* =========================================================================
+ * process_list_mini — Muestra la tabla de procesos de la sesión (ps-mini).
+ *
+ * Issue 2.4 (SIS-45): Imprime en formato tabular todos los slots ocupados
+ * de la bg_table (tanto RUNNING como FINISHED/KILLED). Las columnas son:
+ *   #, PID, PPID, Comando, RAM (KB), Estado.
+ *
+ * Formato de salida (alineado con la spec de Issue 2.4):
+ *   ╔════╦════════╦════════╦══════════════════════╦══════════════╦══════════════╗
+ *   ║ #  ║ PID    ║ PPID   ║ Comando              ║ RAM (KB)     ║ Estado       ║
+ *   ╠════╬════════╬════════╬══════════════════════╬══════════════╬══════════════╣
+ *   ║ 1  ║ 24891  ║ 24800  ║ sleep 10             ║ 256 KB       ║ RUNNING      ║
+ *   ║ 2  ║ 24895  ║ 24800  ║ ls -la               ║ 0 KB         ║ DONE (0)     ║
+ *   ╚════╩════════╩════════╩══════════════════════╩══════════════╩══════════════╝
+ * ========================================================================= */
 void process_list_mini(void) {
-    // Stub base — Se implementará en Issue 2.4 (SIS-45)
+    /* Contar cuántos slots están en uso para detectar tabla vacía */
+    int total = 0;
+    for (int i = 0; i < MAX_BG_PROCESSES; i++) {
+        if (s_bg_table[i].used) total++;
+    }
+
+    if (total == 0) {
+        printf("[ps-mini] No hay procesos en background registrados en esta sesión.\n");
+        return;
+    }
+
+    /* ---- Cabecera de la tabla ---- */
+    printf("╔════╦════════╦════════╦══════════════════════╦══════════════╦══════════════╗\n");
+    printf("║ %-2s ║ %-6s ║ %-6s ║ %-20s ║ %-12s ║ %-12s ║\n",
+           "#", "PID", "PPID", "Comando", "RAM (KB)", "Estado");
+    printf("╠════╬════════╬════════╬══════════════════════╬══════════════╬══════════════╣\n");
+
+    /* ---- Filas de datos ---- */
+    int row = 1;
+    for (int i = 0; i < MAX_BG_PROCESSES; i++) {
+        if (!s_bg_table[i].used) continue;
+
+        BgProcess *p = &s_bg_table[i];
+
+        /* Columna Estado */
+        char estado[24];
+        switch (p->status) {
+            case PROC_RUNNING:
+                snprintf(estado, sizeof(estado), "RUNNING");
+                break;
+            case PROC_FINISHED:
+                snprintf(estado, sizeof(estado), "DONE (%d)", p->exit_code);
+                break;
+            case PROC_KILLED:
+                snprintf(estado, sizeof(estado), "KILLED (%d)", p->exit_code);
+                break;
+            default:
+                snprintf(estado, sizeof(estado), "UNKNOWN");
+                break;
+        }
+
+        /* Columna RAM: si ya se liberó (mem_kb==0 y no RUNNING), mostrar "liberada" */
+        char ram_str[16];
+        if (p->status == PROC_RUNNING) {
+            snprintf(ram_str, sizeof(ram_str), "%d KB", p->mem_kb);
+        } else {
+            snprintf(ram_str, sizeof(ram_str), "0 KB");
+        }
+
+        /* Truncar comando si supera el ancho de columna */
+        char cmd_display[21];
+        snprintf(cmd_display, sizeof(cmd_display), "%s", p->command);
+
+        printf("║ %-2d ║ %-6d ║ %-6d ║ %-20s ║ %-12s ║ %-12s ║\n",
+               row, (int)p->pid, (int)p->ppid,
+               cmd_display, ram_str, estado);
+        row++;
+    }
+
+    /* ---- Pie de la tabla ---- */
+    printf("╚════╩════════╩════════╩══════════════════════╩══════════════╩══════════════╝\n");
 }
