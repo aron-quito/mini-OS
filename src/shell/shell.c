@@ -27,6 +27,7 @@
 #include "shell.h"
 #include "parser.h"
 #include "../process/process.h"
+#include "../process/signals.h"              /* signals_init -- Issue 8.1 (SIS-64) */
 #include "../memory/memory.h"
 #include "../threads/producer_consumer.h" /* thread_demo_run, thread_get_stats -- Issues 7.3 / 7.4 */
 #include "../memory/mem_queue.h"             /* mem_queue_print -- Issue 4.2 (SIS-51) */
@@ -34,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 /* -----------------------------------------------------------------------
  * Prototipos internos (funciones privadas de este archivo)
@@ -104,6 +106,9 @@ static const BuiltinEntry BUILTINS[] = {
  * estado del bloque libre inicial.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
+    /* Issue 8.1 (SIS-64): Instalar manejadores de señales POSIX (SIGCHLD, SIGINT) */
+    signals_init();
+
     /* Issue 2.2: Inicializar subsistema de procesos en background */
     process_init();
 
@@ -406,8 +411,9 @@ static int builtin_thread_demo(Command *cmd) {
     if (cmd->argc >= 2) {
         char *ep = NULL;
         long val = strtol(cmd->argv[1], &ep, 10);
-        if (*ep != '\0' || ep == cmd->argv[1] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de productores debe ser un entero positivo\n", cmd->argv[1]);
+        if (*ep != '\0' || ep == cmd->argv[1]) {
+            fprintf(stderr, "[ERROR] Argumentos inválidos ('%s'). Deben ser enteros positivos.\n", cmd->argv[1]);
+            fprintf(stderr, "Uso: thread-demo [num_productores] [num_consumidores] [items_por_productor]\n");
             return 1;
         }
         p = (int)val;
@@ -416,8 +422,9 @@ static int builtin_thread_demo(Command *cmd) {
     if (cmd->argc >= 3) {
         char *ep = NULL;
         long val = strtol(cmd->argv[2], &ep, 10);
-        if (*ep != '\0' || ep == cmd->argv[2] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de consumidores debe ser un entero positivo\n", cmd->argv[2]);
+        if (*ep != '\0' || ep == cmd->argv[2]) {
+            fprintf(stderr, "[ERROR] Argumentos inválidos ('%s'). Deben ser enteros positivos.\n", cmd->argv[2]);
+            fprintf(stderr, "Uso: thread-demo [num_productores] [num_consumidores] [items_por_productor]\n");
             return 1;
         }
         c = (int)val;
@@ -427,18 +434,16 @@ static int builtin_thread_demo(Command *cmd) {
         char *ep = NULL;
         long val = strtol(cmd->argv[3], &ep, 10);
         if (*ep != '\0' || ep == cmd->argv[3] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de items debe ser un entero positivo\n", cmd->argv[3]);
+            fprintf(stderr, "[ERROR] El número de ítems por productor debe ser un entero positivo (> 0) (recibido: '%s').\n", cmd->argv[3]);
             return 1;
         }
         n = (int)val;
     }
 
-    if (p < 2) {
-        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 productores (recibido: %d)\n", p);
-        return 1;
-    }
-    if (c < 2) {
-        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 consumidores (recibido: %d)\n", c);
+    if (p < 2 || c < 2) {
+        fprintf(stderr,
+                "[ERROR] Se requieren mínimo 2 productores y 2 consumidores (recibido: productores=%d, consumidores=%d).\n",
+                p, c);
         return 1;
     }
 
@@ -564,7 +569,7 @@ static int builtin_mem_status(Command *cmd) {
 
 static int builtin_mem_alloc(Command *cmd) {
     if (cmd->argc < 3) {
-        fprintf(stderr, "[ERROR] Uso: mem-alloc <pid> <kb>\n");
+        fprintf(stderr, "Uso: mem-alloc <pid> <size_kb>\n");
         return 1;
     }
 
@@ -573,11 +578,11 @@ static int builtin_mem_alloc(Command *cmd) {
     long kb  = strtol(cmd->argv[2], &endptr2, 10);
 
     if (*endptr1 != '\0' || endptr1 == cmd->argv[1] || pid <= 0) {
-        fprintf(stderr, "[ERROR] PID invalido '%s'. Debe ser un entero positivo.\n", cmd->argv[1]);
+        fprintf(stderr, "[ERROR] El PID debe ser un entero positivo (recibido: '%s').\n", cmd->argv[1]);
         return 1;
     }
     if (*endptr2 != '\0' || endptr2 == cmd->argv[2] || kb <= 0) {
-        fprintf(stderr, "[ERROR] Tamano invalido '%s'. Debe ser un entero positivo (KB).\n", cmd->argv[2]);
+        fprintf(stderr, "[ERROR] El tamaño debe ser un entero positivo (> 0 KB) (recibido: '%s').\n", cmd->argv[2]);
         return 1;
     }
 
@@ -815,8 +820,13 @@ void shell_loop(void) {
         printf("miniOS> ");
         fflush(stdout);
 
-        /* Detecta Ctrl+D (EOF) */
+        /* Detecta Ctrl+D (EOF) o interrupción de señal (EINTR) */
+        errno = 0;
         if (fgets(line, sizeof(line), stdin) == NULL) {
+            if (errno == EINTR && !feof(stdin)) {
+                clearerr(stdin);
+                continue;
+            }
             printf("\n[INFO] Forzando cierre, Saliendo del shell...\n");
             break;
         }

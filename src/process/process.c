@@ -6,12 +6,14 @@
 #endif
 
 #include "process.h"
+#include "signals.h"
 #include "../memory/memory.h"
 #include "../memory/mem_queue.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -217,9 +219,9 @@ int process_execute_fg(char **argv) {
     if (pid == 0) {
         /* ---------------------------------------------------------------
          * PROCESO HIJO
-         * El binario ya fue validado; si execvp falla ahora es por otro
-         * motivo (permisos revocados, etc.) → exit(126).
+         * Restaurar SIGINT al comportamiento por defecto y ejecutar binario.
          * --------------------------------------------------------------- */
+        signal(SIGINT, SIG_DFL);
         printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n\n", getpid(), getppid());
         fflush(stdout);
 
@@ -231,7 +233,14 @@ int process_execute_fg(char **argv) {
         /* ---------------------------------------------------------------
          * PROCESO PADRE — Espera bloqueante hasta que el hijo termine.
          * --------------------------------------------------------------- */
-        if (waitpid(pid, &status, 0) < 0) {
+        signals_set_fg_pid(pid);
+        pid_t w;
+        do {
+            w = waitpid(pid, &status, 0);
+        } while (w < 0 && errno == EINTR);
+        signals_set_fg_pid(0);
+
+        if (w < 0) {
             perror("miniOS: error en waitpid");
             return -1;
         }
@@ -293,7 +302,9 @@ int process_spawn_bg(char **argv, int mem_kb) {
     }
 
     if (pid == 0) {
-        /* PROCESO HIJO — Ejecutar en background */
+        /* PROCESO HIJO — Aislar en su propio grupo de procesos para que Ctrl+C no lo mate */
+        setpgid(0, 0);
+        signal(SIGINT, SIG_IGN);
         if (execvp(argv[0], argv) < 0) {
             fprintf(stderr, "miniOS: error al ejecutar '%s': %s\n", argv[0], strerror(errno));
             exit(126);
@@ -388,31 +399,37 @@ int process_execute_bg(char **argv, int mem_kb) {
  * Sin esta función, la notificación de fin llegaría via SIGCHLD en
  * medio de la entrada del usuario, solapándose con el texto que escribe.
  * ========================================================================= */
+static void handle_reaped_bg_process(pid_t pid, int status) {
+    /* Actualizar estado en la tabla y recuperar los KB que tenía */
+    int mem_kb = bg_table_set_finished(pid, status);
+
+    /* Imprimir la notificación en una línea limpia antes del prompt */
+    if (WIFEXITED(status)) {
+        printf("\n[BG PID %d] FINALIZADO | Código de salida: %d | RAM liberada: %d KB\n",
+               pid, WEXITSTATUS(status), mem_kb);
+    } else if (WIFSIGNALED(status)) {
+        printf("\n[BG PID %d] TERMINADO POR SEÑAL %d | RAM liberada: %d KB\n",
+               pid, WTERMSIG(status), mem_kb);
+    }
+
+    /* Liberar la RAM simulada asociada a este proceso */
+    if (mem_kb > 0) {
+        memory_free(pid);
+    }
+}
+
 void process_reap_bg(void) {
     int status;
     pid_t pid;
 
-    /*
-     * WNOHANG: retorna 0 inmediatamente si no hay hijos terminados.
-     * El loop recoge todos los que hayan finalizado desde la última llamada.
-     */
+    /* 1. Drenar hijos ya cosechados asíncronamente por sigchld_handler (Issue 8.1) */
+    while (signals_pop_reaped(&pid, &status)) {
+        handle_reaped_bg_process(pid, status);
+    }
+
+    /* 2. Respaldo no bloqueante con waitpid(-1, &status, WNOHANG) */
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        /* Actualizar estado en la tabla y recuperar los KB que tenía */
-        int mem_kb = bg_table_set_finished(pid, status);
-
-        /* Imprimir la notificación en una línea limpia antes del prompt */
-        if (WIFEXITED(status)) {
-            printf("\n[BG PID %d] FINALIZADO | Código de salida: %d | RAM liberada: %d KB\n",
-                   pid, WEXITSTATUS(status), mem_kb);
-        } else if (WIFSIGNALED(status)) {
-            printf("\n[BG PID %d] TERMINADO POR SEÑAL %d | RAM liberada: %d KB\n",
-                   pid, WTERMSIG(status), mem_kb);
-        }
-
-        /* Liberar la RAM simulada asociada a este proceso */
-        if (mem_kb > 0) {
-            memory_free(pid);
-        }
+        handle_reaped_bg_process(pid, status);
     }
 }
 
