@@ -175,8 +175,28 @@ void render_mem_view_pag(void);
 int cmd_mem_view(int argc, char **argv);
 
 /* =========================================================================
- * Issue 6.2 (SIS-58): Conmutación dinámica de algoritmo (switch-ram)
+ * Issue 6.2 & 6.3 (SIS-58 / SIS-59): Conmutación atómica y reset limpio
  * ========================================================================= */
+
+/**
+ * @brief Libera todos los nodos de la lista de bloques First-Fit y deja block_list = NULL (Issue 6.3).
+ */
+void ff_cleanup(void);
+
+/**
+ * @brief Reinicializa First-Fit con 1 bloque inicial libre contiguo (Issue 6.3).
+ */
+void ff_init(void);
+
+/**
+ * @brief Limpia tablas de páginas y resetea FrameTable a estado libre (Issue 6.3).
+ */
+void pag_cleanup(void);
+
+/**
+ * @brief Inicializa la topología de Paginación según mem_state (Issue 6.3).
+ */
+void pag_init(void);
 
 /**
  * @brief Cuenta la cantidad de procesos actualmente alojados en la RAM simulada.
@@ -184,17 +204,17 @@ int cmd_mem_view(int argc, char **argv);
 int count_allocated_processes(void);
 
 /**
- * @brief Libera todos los bloques (First-Fit) y marcos/tablas de páginas (Paginación).
+ * @brief Purga de forma segura los bloques dinámicos (First-Fit) y las tablas de páginas/marcos (Paginación).
  */
 void release_all_memory(void);
 
 /**
- * @brief Reinicia e inicializa las estructuras de memoria para el algoritmo activo.
+ * @brief Reinicia e inicializa atómicamente las estructuras de memoria para el algoritmo activo.
  */
 void reset_memory_structures(void);
 
 /**
- * @brief Handler interactivo para el comando switch-ram [ff|pag] (Issue 6.2).
+ * @brief Handler interactivo para el comando switch-ram [ff|pag] (Issue 6.2 / 6.3).
  */
 int cmd_switch_ram(int argc, char **argv);
 

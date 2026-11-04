@@ -21,6 +21,28 @@ PageTable  page_tables[MAX_PROC];
 static int s_paging_initialized = 0;
 
 /**
+ * @brief Limpia las tablas de páginas de todos los procesos y resetea los marcos
+ *        de FrameTable a estado libre (Issue 6.3 / SIS-59).
+ */
+void pag_cleanup(void) {
+    /* 1. Resetear la FrameTable global marcando todos los marcos como libres */
+    for (int i = 0; i < MAX_PAGES; i++) {
+        frame_table.frame_owner[i] = -1;
+    }
+    frame_table.free_frames = frame_table.total_frames;
+
+    /* 2. Limpiar e invalidar todas las tablas de páginas de procesos */
+    for (int p = 0; p < MAX_PROC; p++) {
+        page_tables[p].process_id = -1;
+        page_tables[p].num_pages  = 0;
+        for (int j = 0; j < MAX_PAGES; j++) {
+            page_tables[p].pages[j].frame_number = -1;
+            page_tables[p].pages[j].valid        = 0;
+        }
+    }
+}
+
+/**
  * @brief Inicializa o reinicia la tabla global de marcos y las tablas de páginas.
  */
 void paging_init(int total_ram_kb, int page_size_kb) {
@@ -33,22 +55,18 @@ void paging_init(int total_ram_kb, int page_size_kb) {
     }
 
     frame_table.total_frames = frames;
-    frame_table.free_frames  = frames;
-
-    for (int i = 0; i < MAX_PAGES; i++) {
-        frame_table.frame_owner[i] = -1;
-    }
-
-    for (int p = 0; p < MAX_PROC; p++) {
-        page_tables[p].process_id = -1;
-        page_tables[p].num_pages  = 0;
-        for (int j = 0; j < MAX_PAGES; j++) {
-            page_tables[p].pages[j].frame_number = -1;
-            page_tables[p].pages[j].valid        = 0;
-        }
-    }
+    pag_cleanup();
 
     s_paging_initialized = 1;
+}
+
+/**
+ * @brief Inicializa la paginación tomando los parámetros activos de mem_state (Issue 6.3 / SIS-59).
+ */
+void pag_init(void) {
+    int ram_kb  = (mem_state.total_ram_kb > 0) ? mem_state.total_ram_kb : DEFAULT_RAM_KB;
+    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    paging_init(ram_kb, page_kb);
 }
 
 /**
@@ -409,7 +427,7 @@ void paging_view(void) {
 }
 
 void paging_cleanup(void) {
-    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
+    pag_cleanup();
 }
 
 int paging_can_alloc(int size_kb) {
