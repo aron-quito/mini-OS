@@ -34,3 +34,7 @@ vgcore.*
 .idea/
 .tags
 tags
+
+# clangd / LSP (generados automáticamente por el IDE)
+.cache/
+compile_commands.json
