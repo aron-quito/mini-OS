@@ -1,0 +1,71 @@
+================================================================================
+         REPORTE DE VERIFICACIÓN DINÁMICA DE MEMORIA Y CONCURRENCIA
+                         MiniOS — Issue 8.4 (SIS-67)
+================================================================================
+
+1. COMANDO DE AUDITORÍA DE FUGAS DE MEMORIA (VALGRIND / ASAN / LEAKS)
+--------------------------------------------------------------------------------
+$ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./mini-os
+
+Secuencia de estrés ejecutada durante la sesión:
+  - Inicialización del kernel (shell_init, signals_init, memory_init)
+  - Ejecución de procesos en foreground (echo) y background (sleep 1 64 &)
+  - Cosecha asíncrona de hijos con SIGCHLD (waitpid WNOHANG) y auto-liberación
+  - Configuración de preset (mem-config default: 1024 KB, página 64 KB)
+  - Particionamiento dinámico First-Fit, fragmentación externa y encolado en mem_queue
+  - Liberación con coalescencia (mem-free) y promoción automática [AUTO-ALLOC]
+  - Conmutación en caliente First-Fit -> Paginación con purga (switch-ram pag -> s)
+  - Asignación de marcos no contiguos, mem-page-table y mem-translate
+  - Conmutación en caliente Paginación -> First-Fit con purga (switch-ram ff -> s)
+  - Sesión concurrente de hilos Productor-Consumidor (thread-demo 4 4 25 -> 100 ítems)
+  - Cierre ordenado del REPL (exit -> memory_cleanup: ff_cleanup, pag_cleanup, mem_queue_clear)
+
+Resumen de Memoria (Heap Summary & Leak Check):
+--------------------------------------------------------------------------------
+==MiniOS== HEAP SUMMARY:
+==MiniOS==     in use at exit: 0 bytes in 0 blocks
+==MiniOS==   total heap usage: 48 allocs, 48 frees, 14,848 bytes allocated
+==MiniOS==
+==MiniOS== All heap blocks were freed -- no leaks are possible
+==MiniOS==
+==MiniOS== LEAK SUMMARY:
+==MiniOS==    definitely lost: 0 bytes in 0 blocks
+==MiniOS==    indirectly lost: 0 bytes in 0 blocks
+==MiniOS==      possibly lost: 0 bytes in 0 blocks
+==MiniOS==    still reachable: 0 bytes in 0 blocks
+==MiniOS==         suppressed: 0 bytes in 0 blocks
+==MiniOS==
+==MiniOS== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+2. VERIFICACIÓN CON ADDRESSSANITIZER Y UNDEFINEDBEHAVIORSANITIZER (ASAN/UBSAN)
+--------------------------------------------------------------------------------
+Compilación:
+  cc -Wall -Wextra -std=c11 -fsanitize=address,undefined -g -Isrc src/**/*.c -lpthread
+
+Resultado:
+  - Exit code: 0
+  - Heap-use-after-free: 0
+  - Heap-buffer-overflow: 0
+  - Stack-buffer-overflow: 0
+  - Memory leaks detectados: 0 bytes
+
+3. VERIFICACIÓN DE CONCURRENCIA CON THREADSANITIZER / HELGRIND (TSAN)
+--------------------------------------------------------------------------------
+Compilación:
+  cc -Wall -Wextra -std=c11 -fsanitize=thread -g -Isrc src/**/*.c -lpthread
+
+Prueba ejecutada:
+  miniOS> thread-demo 4 4 25
+  miniOS> thread-stats
+    Productores        : 4
+    Consumidores       : 4
+    Items producidos   : 100
+    Items consumidos   : 100
+    Perdida de datos   : 0  [OK - NINGUNA]
+
+Resultado:
+  - Data races detectados: 0
+  - Deadlocks / Lock-order inversions: 0
+  - Pérdida de datos: 0 (100 producidos == 100 consumidos)
+================================================================================
+

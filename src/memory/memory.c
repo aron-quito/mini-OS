@@ -107,6 +107,32 @@ int memory_alloc(int pid, int size_kb) {
         return -1;
     }
 
+    /* Issue 8.2 (UC-02-06): Verificar si el PID ya tiene memoria asignada en RAM */
+    if (pid > 0) {
+        if (memory_is_first_fit()) {
+            for (const MemBlock *b = mem_state.block_list; b != NULL; b = b->next) {
+                if (b->status == BLOCK_USED && b->process_id == pid) {
+                    fprintf(stderr,
+                        "[ADVERTENCIA] El PID %d ya tiene %d KB asignados en memoria.\n"
+                        "              Use 'mem-free %d' antes de reasignar.\n",
+                        pid, b->size_kb, pid);
+                    return -1;
+                }
+            }
+        } else {
+            for (int i = 0; i < MAX_PROC; i++) {
+                if (page_tables[i].process_id == pid && page_tables[i].num_pages > 0) {
+                    int page_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+                    fprintf(stderr,
+                        "[ADVERTENCIA] El PID %d ya tiene %d KB (%d páginas) asignados en memoria.\n"
+                        "              Use 'mem-free %d' antes de reasignar.\n",
+                        pid, page_tables[i].num_pages * page_kb, page_tables[i].num_pages, pid);
+                    return -1;
+                }
+            }
+        }
+    }
+
     int result;
 
     if (memory_is_first_fit()) {
@@ -318,7 +344,7 @@ int memory_config_page(int page_kb) {
 
     if (!is_power_of_two(page_kb)) {
         fprintf(stderr,
-            "[ERROR] %d KB no es potencia de 2. Valores validos: 4, 8, 16, 32, 64, 128, 256...\n",
+            "[ERROR] El tamaño de página (%d KB) debe ser potencia de 2. Valores validos: 4, 8, 16, 32, 64, 128, 256...\n",
             page_kb);
         return 1;
     }
