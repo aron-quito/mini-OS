@@ -1,9 +1,10 @@
 /*
- * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 7.1 (SIS-60)
+ * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 7.1 (SIS-60) + Issue 3.1 (SIS-46)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento
  *                   modular a los comandos del sistema (shell_dispatch).
+ * Issue 3.1 (Luis): Inicialización del subsistema de memoria física simulada.
  * Issue 7.1 (JSON): Actualizacion de help con comandos del Modulo 2 (Hilos):
  *                   thread-demo [p] [c] [n] y thread-stats.
  */
@@ -11,6 +12,7 @@
 #include "shell.h"
 #include "parser.h"
 #include "../process/process.h"
+#include "../memory/memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,13 +46,23 @@ static const BuiltinEntry BUILTINS[] = {
 #define BUILTIN_COUNT ((int)(sizeof(BUILTINS) / sizeof(BUILTINS[0])))
 
 /* -----------------------------------------------------------------------
- * shell_init -- Inicializacion del subsistema del shell
+ * shell_init — Inicialización de los subsistemas del sistema
  *
- * Por ahora vacia; en issues posteriores inicializara la tabla de
- * procesos en background, la configuracion de RAM, etc.
+ * Issue 3.1 (SIS-46): Inicializa la memoria física simulada con 128 KB
+ * bajo el esquema de particionamiento dinámico First-Fit y muestra el
+ * estado del bloque libre inicial.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
-    /* Issue 1.1: stub minimo -- se expandira en M3 (Modulo de Memoria) */
+    /* Inicializar subsistema de memoria para la Issue 3.1 (SIS-46) */
+    memory_init(128, MEM_ALGO_FIRST_FIT);
+
+    if (mem_state.block_list != NULL) {
+        printf("[miniOS Kernel] Memoria inicializada: %d KB RAM | Bloque inicial: %d-%d KB (%s)\n\n",
+               mem_state.total_ram_kb,
+               mem_state.block_list->start_kb,
+               mem_state.block_list->size_kb,
+               mem_state.block_list->status == BLOCK_FREE ? "BLOCK_FREE" : "BLOCK_USED");
+    }
 }
 
 /* -----------------------------------------------------------------------
@@ -163,7 +175,7 @@ static int builtin_clear(Command *cmd) {
 /**
  * exit -- Termina la sesion del shell limpiamente.
  *
- * Devuelve un codigo especial (-1) que shell_dispatch reenvía a
+ * Devuelve un codigo especial (-1) que shell_dispatch reenvia a
  * shell_loop para que sepa que debe romper el bucle REPL.
  * Soporta un codigo numerico opcional (ej: exit 0). Si recibe texto
  * o argumentos invalidos, emite un error y no finaliza la sesion.
