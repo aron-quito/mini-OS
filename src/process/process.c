@@ -272,11 +272,60 @@ int process_execute_fg(char **argv) {
  * @param mem_kb  Kilobytes de RAM simulada a reservar para este proceso.
  * @return PID del hijo si se lanzó, -1 en error, 0 si fue encolado por RAM.
  * ========================================================================= */
-int process_execute_bg(char **argv, int mem_kb) {
-    const mem_config_t *cfg;
+int process_spawn_bg(char **argv, int mem_kb) {
     pid_t pid;
     int   slot;
 
+    if (!argv || !argv[0]) {
+        return -1;
+    }
+
+    if (!resolve_command_path(argv[0])) {
+        fprintf(stderr, "miniOS: comando no encontrado: '%s'\n", argv[0]);
+        return 127;
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        perror("miniOS: error al crear proceso hijo en background (fork)");
+        return -1;
+    }
+
+    if (pid == 0) {
+        /* PROCESO HIJO — Ejecutar en background */
+        if (execvp(argv[0], argv) < 0) {
+            fprintf(stderr, "miniOS: error al ejecutar '%s': %s\n", argv[0], strerror(errno));
+            exit(126);
+        }
+    } else {
+        /* PROCESO PADRE — Asignar RAM directamente al PID real */
+        printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n", pid, getpid());
+
+        if (memory_is_first_fit()) {
+            ff_alloc(pid, mem_kb);
+        } else {
+            pag_alloc(pid, mem_kb);
+        }
+
+        slot = bg_table_add(pid, getpid(), argv, mem_kb);
+
+        if (slot < 0) {
+            fprintf(stderr,
+                    "[ADVERTENCIA] bg_table llena (%d slots). "
+                    "El proceso PID %d correrá pero no aparecerá en ps-mini.\n",
+                    MAX_BG_PROCESSES, pid);
+        }
+
+        printf("[RAM ALLOC] PID %d asignado en RAM simulada: %d KB\n", pid, mem_kb);
+        printf("[BG] Proceso '%s' corriendo en background | PID: %d | RAM: %d KB\n\n",
+               argv[0], pid, mem_kb);
+    }
+
+    return pid;
+}
+
+int process_execute_bg(char **argv, int mem_kb) {
     if (!argv || !argv[0]) {
         return -1;
     }
@@ -287,72 +336,43 @@ int process_execute_bg(char **argv, int mem_kb) {
         return 127;
     }
 
-    /*
-     * 2. Reservar memoria simulada ANTES del fork.
-     *
-     * memory_alloc() es llamada con PID 0 como placeholder porque el PID real
-     * del hijo aún no existe. Cuando el Milestone 3 implemente la RAM real,
-     * esta llamada deberá refactorizarse para reasignar la entrada al PID real
-     * del hijo (obtenido justo después del fork).
-     *
-     * Por ahora el stub siempre retorna 0 (éxito), por lo que el flujo de
-     * "RAM insuficiente" y encolamiento está estructurado pero inactivo.
-     */
-    if (memory_alloc(0, mem_kb) != 0) {
-        /* RAM simulada insuficiente: alertar y encolar sin crear proceso */
-        cfg = memory_get_config();
+    /* 2. Verificación de capacidad de RAM */
+    int can_alloc = memory_can_allocate(mem_kb);
+    if (can_alloc == -1) {
+        /* Rechazo permanente: mem_kb supera la RAM total */
         fprintf(stderr,
-                "[ALERTA RAM] Memoria insuficiente para '%s' "
-                "(Requerido: %d KB | RAM total simulada: %d KB).\n",
-                argv[0], mem_kb, cfg->total_ram_kb);
-        mem_queue_enqueue(0, mem_kb, argv[0]);
-        printf("[QUEUE] Proceso '%s' retenido en cola de espera de RAM.\n", argv[0]);
-        printf("[INFO] Se iniciará cuando otro proceso libere espacio.\n");
+            "[ERROR] '%s' rechazado: solicita %d KB pero la RAM total es %d KB.\n"
+            "        Este proceso NUNCA podrá ejecutarse con la RAM actual.\n",
+            argv[0], mem_kb, mem_state.total_ram_kb);
+        return 1;
+    }
+
+    if (can_alloc == 0) {
+        /* RAM insuficiente temporalmente: encolar para lanzamiento posterior */
+        int argc = 0;
+        while (argv[argc] != NULL) argc++;
+
+        char cmd_display[128] = "";
+        for (int i = 0; i < argc; i++) {
+            if (i > 0) strncat(cmd_display, " ", sizeof(cmd_display) - strlen(cmd_display) - 1);
+            strncat(cmd_display, argv[i], sizeof(cmd_display) - strlen(cmd_display) - 1);
+        }
+
+        printf("[ALERTA] Memoria RAM insuficiente para asignar %d KB al proceso '%s'.\n",
+               mem_kb, argv[0]);
+        int pos = mem_queue_enqueue_launch(argv, argc, mem_kb, cmd_display);
+        if (pos < 0) {
+            fprintf(stderr, "[ERROR] No se pudo encolar el proceso (error de memoria).\n");
+            return 1;
+        }
+        printf("[QUEUE] Proceso en background '%s' encolado (Posición: %d).\n"
+               "        Se ejecutará automáticamente cuando haya memoria disponible.\n",
+               cmd_display, pos);
         return 0;
     }
 
-    /* 3. Fork: solo si hay memoria disponible */
-    pid = fork();
-
-    if (pid < 0) {
-        perror("miniOS: error al crear proceso hijo en background (fork)");
-        memory_free(0); /* Liberar la reserva provisional */
-        return -1;
-    }
-
-    if (pid == 0) {
-        /* ---------------------------------------------------------------
-         * PROCESO HIJO — Ejecutar en background.
-         * El hijo no necesita imprimir nada de PID; esa info la muestra
-         * el padre justo debajo antes de devolver el control al shell.
-         * --------------------------------------------------------------- */
-        if (execvp(argv[0], argv) < 0) {
-            fprintf(stderr, "miniOS: error al ejecutar '%s': %s\n", argv[0], strerror(errno));
-            exit(126);
-        }
-    } else {
-        /* ---------------------------------------------------------------
-         * PROCESO PADRE — Retornar inmediatamente (asíncrono).
-         * Registrar el PID en bg_table con metadatos completos (Issue 2.3).
-         * NO se llama a waitpid() bloqueante aquí.
-         * --------------------------------------------------------------- */
-        slot = bg_table_add(pid, getpid(), argv, mem_kb);
-
-        if (slot < 0) {
-            /* Tabla llena: advertir pero el proceso ya está corriendo */
-            fprintf(stderr,
-                    "[ADVERTENCIA] bg_table llena (%d slots). "
-                    "El proceso PID %d correrá pero no aparecerá en ps-mini.\n",
-                    MAX_BG_PROCESSES, pid);
-        }
-
-        printf("[Proceso lanzado] PID: %d | PPID: %d (miniOS)\n", pid, getpid());
-        printf("[RAM ALLOC] PID %d asignado en RAM simulada: %d KB\n", pid, mem_kb);
-        printf("[BG] Proceso '%s' corriendo en background | PID: %d | RAM: %d KB\n\n",
-               argv[0], pid, mem_kb);
-    }
-
-    return pid;
+    /* 3. Hay memoria disponible: bifurcar y ejecutar directamente */
+    return process_spawn_bg(argv, mem_kb);
 }
 
 /* =========================================================================
@@ -380,11 +400,6 @@ void process_reap_bg(void) {
         /* Actualizar estado en la tabla y recuperar los KB que tenía */
         int mem_kb = bg_table_set_finished(pid, status);
 
-        /* Liberar la RAM simulada asociada a este proceso */
-        if (mem_kb > 0) {
-            memory_free(pid);
-        }
-
         /* Imprimir la notificación en una línea limpia antes del prompt */
         if (WIFEXITED(status)) {
             printf("\n[BG PID %d] FINALIZADO | Código de salida: %d | RAM liberada: %d KB\n",
@@ -392,6 +407,11 @@ void process_reap_bg(void) {
         } else if (WIFSIGNALED(status)) {
             printf("\n[BG PID %d] TERMINADO POR SEÑAL %d | RAM liberada: %d KB\n",
                    pid, WTERMSIG(status), mem_kb);
+        }
+
+        /* Liberar la RAM simulada asociada a este proceso */
+        if (mem_kb > 0) {
+            memory_free(pid);
         }
     }
 }

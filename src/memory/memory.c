@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "first_fit.h"
 #include "paging.h"
 #include "mem_queue.h"  /* Issue 4.2 (SIS-51): encolado reactivo */
 
@@ -144,7 +145,9 @@ int memory_alloc(int pid, int size_kb) {
             /* Memoria insuficiente o fragmentación — encolar automáticamente */
             printf("[ALERTA] Memoria RAM insuficiente para asignar %d KB al PID %d.\n",
                    size_kb, pid);
-            int pos = mem_queue_enqueue(pid, size_kb, "");
+            char cmd_lbl[64];
+            snprintf(cmd_lbl, sizeof(cmd_lbl), "mem-alloc %d %d", pid, size_kb);
+            int pos = mem_queue_enqueue(pid, size_kb, cmd_lbl);
             if (pos < 0) {
                 fprintf(stderr, "[ERROR] No se pudo encolar el proceso PID %d (malloc fallido).\n", pid);
                 return -1;
@@ -161,13 +164,57 @@ int memory_alloc(int pid, int size_kb) {
 
 int memory_free(int pid) {
     if (memory_is_first_fit()) {
-        int r = ff_free(pid);
-        if (r == 0) {
-            mem_queue_process_waiting();
-        }
-        return r;
+        return ff_free(pid);
     }
     return paging_free(pid);
+}
+
+int memory_can_allocate(int size_kb) {
+    if (size_kb > mem_state.total_ram_kb) {
+        return -1;
+    }
+    if (size_kb <= 0) {
+        return 0;
+    }
+    if (memory_is_first_fit()) {
+        return first_fit_can_alloc(size_kb);
+    } else {
+        return paging_can_alloc(size_kb);
+    }
+}
+
+/**
+ * @brief Reasigna el PID de un bloque de memoria de old_pid a new_pid.
+ *
+ * Se invoca en process_execute_bg() justo después del fork() para corregir
+ * el PID provisional (0) al PID real del proceso hijo recién creado.
+ * Sin esta llamada, memory_free(real_pid) no encontraría el bloque y la RAM
+ * quedaría marcada como BLOCK_USED para siempre (memory leak simulado).
+ *
+ * @param old_pid  PID provisional con que se reservó (normalmente 0).
+ * @param new_pid  PID real del proceso hijo obtenido del fork().
+ * @return 0 si el bloque fue encontrado y actualizado, -1 si no existe.
+ */
+int memory_reassign_pid(int old_pid, int new_pid) {
+    MemBlock *b = mem_state.block_list;
+    while (b != NULL) {
+        if (b->status == BLOCK_USED && b->process_id == old_pid) {
+            b->process_id = new_pid;
+            if (memory_is_first_fit()) {
+                printf("[FF] PID %d asignado en dirección %d KB (%d KB)\n",
+                       new_pid, b->start_kb, b->size_kb);
+            }
+            return 0;
+        }
+        b = b->next;
+    }
+
+    /* En modo Paginación: actualizar la page_table del proceso */
+    if (!memory_is_first_fit()) {
+        pag_free(old_pid); /* Libera la entrada antigua */
+    }
+
+    return -1; /* Bloque no encontrado */
 }
 
 void memory_view(void) {
@@ -271,6 +318,12 @@ int memory_config_ram(int ram_kb) {
     printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", ram_kb);
     printf("[INFO] Marcos recalculados: %d (pagina = %d KB)\n",
            mem_state.total_frames, mem_state.page_size_kb);
+
+    /* Fix #2: Intentar asignar procesos en cola que ahora puedan caber */
+    if (mem_queue_length() > 0) {
+        printf("[QUEUE] RAM ampliada — revisando cola de espera...\n");
+        mem_queue_process_waiting();
+    }
     return 0;
 }
 
@@ -362,6 +415,12 @@ int memory_config_frames(int frames) {
     printf("[OK] Marcos configurados: %d | RAM recalculada: %d KB (pagina = %d KB)\n",
            frames, new_ram_kb, mem_state.page_size_kb);
     printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", new_ram_kb);
+
+    /* Fix #2: Intentar asignar procesos en cola que ahora puedan caber */
+    if (mem_queue_length() > 0) {
+        printf("[QUEUE] RAM ampliada — revisando cola de espera...\n");
+        mem_queue_process_waiting();
+    }
     return 0;
 }
 
@@ -530,9 +589,15 @@ static void format_queue_summary_line(char *out_buf, size_t buf_size) {
     } else {
         mem_queue_node_t *front = mem_queue_peek();
         if (front != NULL) {
-            snprintf(out_buf, buf_size,
-                     "Cola de Espera RAM: %d proceso(s) en espera (PID %d: %d KB)",
-                     q_len, front->pid, front->size_kb);
+            if (front->type == MEM_REQ_LAUNCH) {
+                snprintf(out_buf, buf_size,
+                         "Cola de Espera RAM: %d proceso(s) en espera ('%s': %d KB)",
+                         q_len, front->command, front->size_kb);
+            } else {
+                snprintf(out_buf, buf_size,
+                         "Cola de Espera RAM: %d proceso(s) en espera (PID %d: %d KB)",
+                         q_len, front->pid, front->size_kb);
+            }
         } else {
             snprintf(out_buf, buf_size,
                      "Cola de Espera RAM: %d proceso(s) en espera", q_len);

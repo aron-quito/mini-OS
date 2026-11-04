@@ -164,6 +164,7 @@ static int builtin_help(Command *cmd) {
         printf("    mem-status               Muestra el resumen del estado de la memoria.\n");
         printf("    mem-alloc <pid> <kb>     Asigna memoria RAM a un proceso o lo encola.\n");
         printf("    mem-free <pid>           Libera la memoria ocupada por un proceso.\n");
+        printf("    mem-queue                Muestra la cola de procesos esperando RAM.\n");
         printf("    mem-translate <pid> <d>  Traduce una direccion logica a fisica (modo PAG).\n");
         printf("    mem-page-table <pid>     Visualiza la tabla de paginas del proceso (modo PAG).\n");
         printf("    mem-view / ram-view      Muestra el mapa visual de RAM y cola de espera.\n");
@@ -268,14 +269,25 @@ static int builtin_help(Command *cmd) {
         printf("      mem-free 42\n\n");
     } else if (strcmp(topic, "mem-queue") == 0) {
         printf("\n  mem-queue\n");
-        printf("    Muestra la tabla de procesos que estan esperando RAM.\n");
-        printf("    Por cada proceso muestra: posicion en la fila, PID, KB solicitados\n");
-        printf("    y el tiempo que lleva esperando en formato mm:ss.\n\n");
+        printf("    Muestra la tabla de procesos que esperan RAM en la cola FIFO.\n\n");
+        printf("    Por cada proceso muestra:\n");
+        printf("      Pos       Posicion en la cola (1 = siguiente en ser atendido).\n");
+        printf("      PID       Identificador del proceso.\n");
+        printf("      Comando   Nombre del comando que solicito la memoria.\n");
+        printf("      Espera    Tiempo transcurrido desde que fue encolado (mm:ss).\n\n");
+        printf("    Comportamiento automatico:\n");
+        printf("      - Si la RAM se amplia con 'mem-config ram' o 'mem-config frames',\n");
+        printf("        el sistema intenta asignar automaticamente los procesos en cola.\n");
+        printf("      - Cuando un proceso libera memoria ('mem-free'), se intenta\n");
+        printf("        reasignar la RAM al siguiente proceso en la cola (FIFO estricto).\n");
+        printf("      - Un proceso que solicita mas KB de los que puede haber en RAM\n");
+        printf("        es rechazado definitivamente (nunca se encola).\n\n");
         printf("    Muestra aviso si la cola esta vacia.\n\n");
         printf("    Ejemplo:\n");
         printf("      miniOS> mem-alloc 42 90   # asigna\n");
-        printf("      miniOS> mem-alloc 99 999  # encola (no cabe)\n");
-        printf("      miniOS> mem-queue         # muestra la tabla\n\n");
+        printf("      miniOS> mem-alloc 99 60   # encola (fragmentacion)\n");
+        printf("      miniOS> mem-queue         # muestra la tabla\n");
+        printf("      miniOS> mem-free 42       # libera -> 99 se asigna auto\n\n");
     } else if (strcmp(topic, "mem-translate") == 0) {
         printf("\n  mem-translate <pid> <dir_logica>\n");
         printf("    Traduce una direccion logica (KB) a su direccion fisica correspondiente\n");

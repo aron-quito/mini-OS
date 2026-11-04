@@ -75,6 +75,17 @@ int process_execute_fg(char **argv);
 int process_execute_bg(char **argv, int mem_kb);
 
 /**
+ * @brief Bifurca y ejecuta un proceso en segundo plano asignándole RAM directamente.
+ *
+ * Se invoca cuando ya se verificó que hay espacio en RAM (o al desencolar de mem_queue).
+ *
+ * @param argv   Arreglo de argumentos terminado en NULL.
+ * @param mem_kb Kilobytes de RAM a asignar al PID real del hijo.
+ * @return PID del hijo si tuvo éxito, -1 si falló.
+ */
+int process_spawn_bg(char **argv, int mem_kb);
+
+/**
  * @brief Cosecha procesos en background que hayan terminado (no bloqueante).
  *
  * Debe llamarse justo antes de mostrar el prompt en shell_loop para evitar

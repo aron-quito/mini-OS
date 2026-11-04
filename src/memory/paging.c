@@ -185,38 +185,6 @@ static PageTable *find_mutable_page_table_by_pid(int pid) {
 }
 
 /**
- * @brief Desencolado reactivo y asignación automática tras liberación (Issue 4.4 / 5.3).
- *
- * Definido con atributo weak para coexistir sin conflicto si mem_queue.c define
- * su propia versión fuerte en otra rama.
- */
-void __attribute__((weak)) mem_queue_process_waiting(void) {
-    while (mem_queue_length() > 0) {
-        mem_queue_node_t *front = mem_queue_peek();
-        if (front == NULL) {
-            break;
-        }
-
-        int allocated = 0;
-        if (memory_is_first_fit()) {
-            allocated = (ff_alloc(front->pid, front->size_kb) == 0);
-        } else {
-            allocated = (pag_alloc(front->pid, front->size_kb) == 0);
-        }
-
-        if (allocated) {
-            printf("[AUTO-ALLOC] Proceso en espera PID %d asignado exitosamente en RAM (%d KB).\n",
-                   front->pid, front->size_kb);
-            mem_queue_node_t *node = mem_queue_dequeue();
-            free(node);
-        } else {
-            /* El proceso al frente aún no cabe; mantener orden FIFO estricto */
-            break;
-        }
-    }
-}
-
-/**
  * @brief Libera los marcos ocupados por un proceso, limpia su PageTable e invoca
  *        mem_queue_process_waiting() — Issue 5.3 (SIS-56).
  *
@@ -442,4 +410,16 @@ void paging_view(void) {
 
 void paging_cleanup(void) {
     paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
+}
+
+int paging_can_alloc(int size_kb) {
+    if (size_kb <= 0 || size_kb > mem_state.total_ram_kb) {
+        return 0;
+    }
+    int page_size = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    int pages_needed = (size_kb + page_size - 1) / page_size;
+    if (pages_needed > MAX_PAGES) {
+        return 0;
+    }
+    return (frame_table.free_frames >= pages_needed) ? 1 : 0;
 }

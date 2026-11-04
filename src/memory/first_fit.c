@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include "first_fit.h"
 #include "memory.h"
+#include "mem_queue.h"
 
 /* Contador global de bloques para IDs únicos (Issue 3.3) */
 int block_counter = 0;
@@ -53,7 +54,9 @@ int ff_alloc(int pid, int size_kb) {
             }
             curr->status = BLOCK_USED;
             curr->process_id = pid;
-            printf("[FF] PID %d asignado en dirección %d KB (%d KB)\n", pid, curr->start_kb, size_kb);
+            if (pid > 0) {
+                printf("[FF] PID %d asignado en dirección %d KB (%d KB)\n", pid, curr->start_kb, size_kb);
+            }
             return 0; // Asignación exitosa
         }
         curr = curr->next;
@@ -122,6 +125,9 @@ int ff_free(int pid) {
 
     int merged = merge_adjacent_blocks();
     printf("[FF] Memoria liberada para PID %d. Bloques fusionados: %d\n", pid, merged);
+
+    /* Issue 4.4 (SIS-53): Intentar asignar automáticamente a procesos en espera */
+    mem_queue_process_waiting();
     return 0;
 }
 
@@ -135,4 +141,18 @@ void first_fit_view(void) {
 
 void first_fit_cleanup(void) {
     mem_reset_blocks();
+}
+
+int first_fit_can_alloc(int size_kb) {
+    if (size_kb <= 0 || size_kb > mem_state.total_ram_kb) {
+        return 0;
+    }
+    MemBlock *curr = mem_state.block_list;
+    while (curr != NULL) {
+        if (curr->status == BLOCK_FREE && curr->size_kb >= size_kb) {
+            return 1;
+        }
+        curr = curr->next;
+    }
+    return 0;
 }
