@@ -122,6 +122,15 @@ const mem_config_t *memory_get_config(void) {
  * @return 0 si se asignó exitosamente, 1 si fue encolado, -1 en error grave.
  */
 int memory_alloc(int pid, int size_kb) {
+    /* Validacion: rechazar si el proceso pide mas RAM de la que existe en total */
+    if (size_kb > mem_state.total_ram_kb) {
+        fprintf(stderr,
+            "[ERROR] PID %d solicita %d KB pero la RAM total del sistema es %d KB.\n"
+            "        Solicitud rechazada (nunca cabria en memoria).\n",
+            pid, size_kb, mem_state.total_ram_kb);
+        return -1;
+    }
+
     int result;
 
     if (memory_is_first_fit()) {
