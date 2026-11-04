@@ -1,18 +1,21 @@
 /*
- * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 7.1 (SIS-60) + Issue 3.1 (SIS-46)
+ * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 7.1 (SIS-60)
+ *           + Issue 3.1 (SIS-46) + Issue 7.3 (SIS-62)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento
  *                   modular a los comandos del sistema (shell_dispatch).
- * Issue 3.1 (Luis): Inicialización del subsistema de memoria física simulada.
- * Issue 7.1 (JSON): Actualizacion de help con comandos del Modulo 2 (Hilos):
- *                   thread-demo [p] [c] [n] y thread-stats.
+ * Issue 3.1 (Luis): Inicializacion del subsistema de memoria fisica simulada.
+ * Issue 7.1 (JSON): Actualizacion de help con comandos del Modulo 2 (Hilos).
+ * Issue 7.3 (JSON): Comando thread-demo [p] [c] [n] conectado a
+ *                   thread_demo_run() del modulo de hilos (producer_consumer.c).
  */
 
 #include "shell.h"
 #include "parser.h"
 #include "../process/process.h"
 #include "../memory/memory.h"
+#include "../threads/producer_consumer.h"  /* thread_demo_run, thread_get_stats -- Issue 7.3 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +26,7 @@
 static int builtin_help(Command *cmd);
 static int builtin_clear(Command *cmd);
 static int builtin_exit(Command *cmd);
+static int builtin_thread_demo(Command *cmd);   /* Issue 7.3 (SIS-62) */
 
 /* -----------------------------------------------------------------------
  * Tabla de despacho de comandos built-in
@@ -37,20 +41,20 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",  builtin_help  },
-    { "clear", builtin_clear },
-    { "exit",  builtin_exit  },
+    { "help",        builtin_help        },
+    { "clear",       builtin_clear       },
+    { "exit",        builtin_exit        },
+    { "thread-demo", builtin_thread_demo }, /* Issue 7.3 (SIS-62) */
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
 #define BUILTIN_COUNT ((int)(sizeof(BUILTINS) / sizeof(BUILTINS[0])))
 
 /* -----------------------------------------------------------------------
- * shell_init — Inicialización de los subsistemas del sistema
+ * shell_init -- Inicializacion de los subsistemas del sistema
  *
- * Issue 3.1 (SIS-46): Inicializa la memoria física simulada con 128 KB
- * bajo el esquema de particionamiento dinámico First-Fit y muestra el
- * estado del bloque libre inicial.
+ * Issue 3.1 (SIS-46): Inicializa la memoria fisica simulada con 128 KB
+ * bajo el esquema de particionamiento dinamico First-Fit.
  * ----------------------------------------------------------------------- */
 void shell_init(void) {
     /* Inicializar subsistema de memoria para la Issue 3.1 (SIS-46) */
@@ -72,12 +76,8 @@ void shell_init(void) {
 /**
  * help -- Lista todos los comandos disponibles agrupados por modulo
  * o muestra la ayuda especifica si se especifica un comando.
- *
- * Actualizado en Issue 7.1: se agregaron thread-demo y thread-stats
- * del Modulo 2 (Hilos) con sus descripciones completas.
  */
 static int builtin_help(Command *cmd) {
-    /* Si no se especifico un argumento, mostrar la ayuda general */
     if (cmd->argc <= 1) {
         printf("\n");
         printf("  miniOS -- Shell Interactivo Educativo en C11\n");
@@ -96,14 +96,12 @@ static int builtin_help(Command *cmd) {
         printf("    ps-mini           Lista los procesos activos de la sesion.\n");
         printf("\n");
 
-        /* --- Issue 7.1: Modulo 2 actualizado con thread-demo y thread-stats --- */
-        printf("  [Modulo 2 -- Hilos]     (disponible en Issue 7.1+)\n");
+        printf("  [Modulo 2 -- Hilos]\n");
         printf("    thread-demo [p] [c] [n]\n");
         printf("                      Lanza la demo Productor-Consumidor con p productores,\n");
         printf("                      c consumidores y n items por productor.\n");
         printf("                      Valores por defecto: 2 productores, 2 consumidores, 10 items.\n");
-        printf("    thread-stats      Muestra estadisticas de la ultima sesion de hilos:\n");
-        printf("                      items producidos, consumidos, perdidas y tiempo de ejecucion.\n");
+        printf("    thread-stats      Muestra estadisticas de la ultima sesion de hilos.\n");
         printf("\n");
 
         printf("  [Modulo 3 -- Memoria]   (disponible en Issue 3.1+)\n");
@@ -113,7 +111,6 @@ static int builtin_help(Command *cmd) {
         return 0;
     }
 
-    /* Ayuda detallada para un comando especifico */
     const char *topic = cmd->argv[1];
 
     if (strcmp(topic, "help") == 0) {
@@ -129,7 +126,6 @@ static int builtin_help(Command *cmd) {
         printf("\n  ps-mini\n");
         printf("    Muestra la lista de procesos activos y en segundo plano gestionados por el shell.\n\n");
     } else if (strcmp(topic, "thread-demo") == 0) {
-        /* Actualizado en Issue 7.1 con sintaxis completa y descripcion de parametros */
         printf("\n  thread-demo [p] [c] [n]\n");
         printf("    Ejecuta la simulacion concurrente del problema clasico Productor-Consumidor.\n\n");
         printf("    Parametros opcionales (todos deben ser enteros positivos >= 2):\n");
@@ -139,10 +135,9 @@ static int builtin_help(Command *cmd) {
         printf("    Ejemplo:\n");
         printf("      thread-demo 3 2 20   # 3 productores, 2 consumidores, 20 items c/u\n");
         printf("      thread-demo          # ejecuta con valores por defecto\n\n");
-        printf("    Usa un bufer circular de %d slots protegido con pthread_mutex_t y\n", 8);
+        printf("    Usa un bufer circular de %d slots protegido con pthread_mutex_t y\n", BUFFER_SIZE);
         printf("    pthread_cond_t para garantizar 0 perdidas de datos.\n\n");
     } else if (strcmp(topic, "thread-stats") == 0) {
-        /* Nuevo en Issue 7.1 */
         printf("\n  thread-stats\n");
         printf("    Muestra las estadisticas de la ultima sesion de hilos ejecutada con thread-demo.\n\n");
         printf("    Incluye: productores, consumidores, items producidos, items consumidos,\n");
@@ -175,10 +170,8 @@ static int builtin_clear(Command *cmd) {
 /**
  * exit -- Termina la sesion del shell limpiamente.
  *
- * Devuelve un codigo especial (-1) que shell_dispatch reenvia a
- * shell_loop para que sepa que debe romper el bucle REPL.
- * Soporta un codigo numerico opcional (ej: exit 0). Si recibe texto
- * o argumentos invalidos, emite un error y no finaliza la sesion.
+ * Devuelve -1 como senal a shell_loop para romper el bucle REPL.
+ * Soporta un codigo numerico opcional (ej: exit 0).
  */
 static int builtin_exit(Command *cmd) {
     if (cmd->argc > 2) {
@@ -198,7 +191,85 @@ static int builtin_exit(Command *cmd) {
     }
 
     printf("[INFO] Finalizando miniOS. Hasta luego!\n");
-    return -1; /* senal de salida para shell_loop */
+    return -1;
+}
+
+/* -----------------------------------------------------------------------
+ * builtin_thread_demo -- Issue 7.3 (SIS-62)
+ *
+ * Sintaxis: thread-demo [p] [c] [n]
+ *   p = numero de productores  (defecto 2, minimo 2)
+ *   c = numero de consumidores (defecto 2, minimo 2)
+ *   n = items por productor    (defecto 10, minimo 1)
+ *
+ * Validaciones:
+ *   - Demasiados argumentos (> 3): mensaje de uso y retorno 1.
+ *   - Argumentos no numericos o negativos: error descriptivo.
+ *   - p < 2 o c < 2: aviso del criterio de aceptacion del spec.
+ *
+ * Llama a thread_demo_run() de producer_consumer.c (Issue 7.2).
+ * ----------------------------------------------------------------------- */
+static int builtin_thread_demo(Command *cmd) {
+    /* Valores por defecto segun el spec de la Issue 7.3 */
+    int p = 2;   /* productores  */
+    int c = 2;   /* consumidores */
+    int n = 10;  /* items por productor */
+
+    /* --- Validar numero de argumentos --- */
+    if (cmd->argc > 4) {
+        fprintf(stderr, "miniOS: thread-demo: demasiados argumentos\n");
+        fprintf(stderr, "  Uso: thread-demo [p] [c] [n]\n");
+        fprintf(stderr, "       p = productores (defecto 2), c = consumidores (defecto 2),\n");
+        fprintf(stderr, "       n = items por productor (defecto 10)\n");
+        return 1;
+    }
+
+    /* --- Parsear argumentos opcionales --- */
+    if (cmd->argc >= 2) {
+        char *ep = NULL;
+        long val = strtol(cmd->argv[1], &ep, 10);
+        if (*ep != '\0' || ep == cmd->argv[1] || val <= 0) {
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de productores debe ser un entero positivo\n",
+                    cmd->argv[1]);
+            return 1;
+        }
+        p = (int)val;
+    }
+
+    if (cmd->argc >= 3) {
+        char *ep = NULL;
+        long val = strtol(cmd->argv[2], &ep, 10);
+        if (*ep != '\0' || ep == cmd->argv[2] || val <= 0) {
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de consumidores debe ser un entero positivo\n",
+                    cmd->argv[2]);
+            return 1;
+        }
+        c = (int)val;
+    }
+
+    if (cmd->argc >= 4) {
+        char *ep = NULL;
+        long val = strtol(cmd->argv[3], &ep, 10);
+        if (*ep != '\0' || ep == cmd->argv[3] || val <= 0) {
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de items debe ser un entero positivo\n",
+                    cmd->argv[3]);
+            return 1;
+        }
+        n = (int)val;
+    }
+
+    /* --- Validar minimos segun criterio de aceptacion del spec --- */
+    if (p < 2) {
+        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 productores (recibido: %d)\n", p);
+        return 1;
+    }
+    if (c < 2) {
+        fprintf(stderr, "miniOS: thread-demo: se requieren minimo 2 consumidores (recibido: %d)\n", c);
+        return 1;
+    }
+
+    /* --- Lanzar la demo --- */
+    return thread_demo_run(p, c, n);
 }
 
 /* -----------------------------------------------------------------------
@@ -209,21 +280,16 @@ static int builtin_exit(Command *cmd) {
  *  2. Si la linea estaba vacia, retorna 0 sin hacer nada.
  *  3. Busca argv[0] en la tabla de built-ins y lo ejecuta si lo encuentra.
  *  4. Si no es un built-in, llama a process_execute_fg (Issue 2.1).
- *
- * @param line  Linea de texto cruda leida por shell_loop (se trabaja sobre copia).
- * @return 0 en exito, -1 si el shell debe terminar (comando exit).
  * ----------------------------------------------------------------------- */
 int shell_dispatch(char *line) {
     Command cmd;
     int argc = parse_command(line, &cmd);
 
-    /* Linea vacia o solo espacios: no hacer nada */
     if (argc == 0) {
         free_command(&cmd);
         return 0;
     }
 
-    /* Buscar argv[0] en la tabla de built-ins */
     for (int i = 0; i < BUILTIN_COUNT; i++) {
         if (strcmp(cmd.argv[0], BUILTINS[i].name) == 0) {
             int result = BUILTINS[i].handler(&cmd);
@@ -232,11 +298,6 @@ int shell_dispatch(char *line) {
         }
     }
 
-    /*
-     * Comando no reconocido como built-in.
-     * Issue 2.1 (Modulo 1: Procesos): Ejecucion externa sincrona en foreground.
-     * (En Issue 2.2 se evaluara cmd.is_background para bifurcar a process_execute_bg).
-     */
     int result = process_execute_fg(cmd.argv);
     free_command(&cmd);
     return result;
@@ -244,9 +305,6 @@ int shell_dispatch(char *line) {
 
 /* -----------------------------------------------------------------------
  * shell_loop -- Ciclo principal REPL (Issue 1.2 / SIS-39)
- *
- * Lee lineas del usuario, las limpia y las envia a shell_dispatch.
- * Si dispatch devuelve -1 (senal de exit), rompe el bucle.
  * ----------------------------------------------------------------------- */
 void shell_loop(void) {
     char line[MAX_LINE];
@@ -255,19 +313,15 @@ void shell_loop(void) {
         printf("miniOS> ");
         fflush(stdout);
 
-        /* Detecta Ctrl+D (EOF) */
         if (fgets(line, sizeof(line), stdin) == NULL) {
             printf("\n[INFO] Forzando cierre, Saliendo del shell...\n");
             break;
         }
 
-        /* Elimina '\n' o '\r\n' al final de la linea leida */
         line[strcspn(line, "\r\n")] = '\0';
 
-        /* Ignora lineas completamente vacias (solo Enter) */
         if (strlen(line) == 0) continue;
 
-        /* Despacha el comando; si retorna -1 es senal de exit */
         if (shell_dispatch(line) == -1) break;
     }
 }
