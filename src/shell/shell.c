@@ -103,6 +103,8 @@ void shell_init(void) {
  * o muestra la ayuda especifica si se especifica un comando.
  */
 static int builtin_help(Command *cmd) {
+    const char *topic;
+
     /* Si no se especifico un argumento, mostrar la ayuda general */
     if (cmd->argc <= 1) {
         printf("\n");
@@ -144,7 +146,7 @@ static int builtin_help(Command *cmd) {
     }
 
     /* Ayuda detallada para un comando especifico */
-    const char *topic = cmd->argv[1];
+    topic = cmd->argv[1];
 
     if (strcmp(topic, "help") == 0) {
         printf("\n  help [comando]\n");
@@ -231,14 +233,17 @@ static int builtin_clear(Command *cmd) {
  * o argumentos invalidos, emite un error y no finaliza la sesion.
  */
 static int builtin_exit(Command *cmd) {
+    char *endptr;
+    long  code;
+
     if (cmd->argc > 2) {
         fprintf(stderr, "miniOS: exit: demasiados argumentos\n");
         return 1;
     }
 
     if (cmd->argc == 2) {
-        char *endptr = NULL;
-        long code = strtol(cmd->argv[1], &endptr, 10);
+        endptr = NULL;
+        code   = strtol(cmd->argv[1], &endptr, 10);
         if (*endptr != '\0' || endptr == cmd->argv[1]) {
             fprintf(stderr, "miniOS: exit: '%s': se requiere un argumento numerico\n", cmd->argv[1]);
             return 1;
@@ -446,7 +451,10 @@ static int builtin_mem_status(Command *cmd) {
  * Si el ultimo argumento no es un numero puro, usa DEFAULT_BG_MEM_KB (128 KB).
  * ----------------------------------------------------------------------- */
 static int extract_mem_kb(char **argv, int *argc_ptr) {
-    int argc = *argc_ptr;
+    char *last;
+    char *endptr;
+    long  val;
+    int   argc = *argc_ptr;
 
     /*
      * Se necesita al menos: argv[0]=comando, argv[1]=argumento, argv[2]=KB.
@@ -458,9 +466,9 @@ static int extract_mem_kb(char **argv, int *argc_ptr) {
     }
 
     /* Verificar si el ultimo argumento es un entero puro positivo */
-    char *last = argv[argc - 1];
-    char *endptr = NULL;
-    long val = strtol(last, &endptr, 10);
+    last   = argv[argc - 1];
+    endptr = NULL;
+    val    = strtol(last, &endptr, 10);
 
     if (*endptr == '\0' && endptr != last && val > 0) {
         /* Es un numero: extraerlo del argv y ajustar argc */
@@ -491,7 +499,12 @@ static int extract_mem_kb(char **argv, int *argc_ptr) {
  * ----------------------------------------------------------------------- */
 int shell_dispatch(char *line) {
     Command cmd;
-    int argc = parse_command(line, &cmd);
+    int     argc;
+    int     i;
+    int     result;
+    int     mem_kb;
+
+    argc = parse_command(line, &cmd);
 
     /* Linea vacia o solo espacios: no hacer nada */
     if (argc == 0) {
@@ -500,9 +513,9 @@ int shell_dispatch(char *line) {
     }
 
     /* Buscar argv[0] en la tabla de built-ins */
-    for (int i = 0; i < BUILTIN_COUNT; i++) {
+    for (i = 0; i < BUILTIN_COUNT; i++) {
         if (strcmp(cmd.argv[0], BUILTINS[i].name) == 0) {
-            int result = BUILTINS[i].handler(&cmd);
+            result = BUILTINS[i].handler(&cmd);
             free_command(&cmd);
             return result;
         }
@@ -526,8 +539,6 @@ int shell_dispatch(char *line) {
         }
     }
 
-    int result;
-
     if (cmd.is_background) {
         /*
          * Issue 2.2 -- Ejecucion en background con operador '&':
@@ -536,7 +547,7 @@ int shell_dispatch(char *line) {
          * Ejemplo: "sleep 10 256 &" -> execvp("sleep", ["sleep", "10", NULL])
          *                              mem_kb = 256
          */
-        int mem_kb = extract_mem_kb(cmd.argv, &cmd.argc);
+        mem_kb = extract_mem_kb(cmd.argv, &cmd.argc);
         result = process_execute_bg(cmd.argv, mem_kb);
     } else {
         /* Issue 2.1 -- Ejecucion en foreground sincrona */

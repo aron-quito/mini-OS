@@ -139,29 +139,34 @@ static int bg_table_set_finished(pid_t pid, int wait_status) {
  * @return 1 si se encontró un ejecutable válido, 0 en caso contrario.
  * ========================================================================= */
 static int resolve_command_path(const char *name) {
+    const char *path_env;
+    char path_copy[4096];
+    char candidate[4096];
+    char *saveptr;
+    char *dir;
+    int  needed;
+
     /* Rutas absolutas o relativas: verificar directamente */
     if (strchr(name, '/')) {
         return access(name, X_OK) == 0;
     }
 
     /* Nombre simple: recorrer $PATH buscando "<dir>/<name>" */
-    const char *path_env = getenv("PATH");
+    path_env = getenv("PATH");
     if (!path_env) {
         return 0;
     }
 
     /* Trabajar sobre una copia ya que strtok_r modifica la cadena */
-    char path_copy[4096];
     strncpy(path_copy, path_env, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
 
-    char candidate[4096];
-    char *saveptr = NULL;
-    char *dir = strtok_r(path_copy, ":", &saveptr);
+    saveptr = NULL;
+    dir = strtok_r(path_copy, ":", &saveptr);
 
     while (dir != NULL) {
         /* Construir ruta candidata "<dir>/<name>" */
-        int needed = snprintf(candidate, sizeof(candidate), "%s/%s", dir, name);
+        needed = snprintf(candidate, sizeof(candidate), "%s/%s", dir, name);
         if (needed > 0 && (size_t)needed < sizeof(candidate)) {
             if (access(candidate, X_OK) == 0) {
                 return 1;
@@ -187,6 +192,11 @@ static int resolve_command_path(const char *name) {
  * @return Código de retorno del proceso hijo, o -1 si falla fork/waitpid.
  * ========================================================================= */
 int process_execute_fg(char **argv) {
+    pid_t pid;
+    int   status;
+    int   exit_code;
+    int   term_sig;
+
     if (!argv || !argv[0]) {
         return -1;
     }
@@ -197,7 +207,7 @@ int process_execute_fg(char **argv) {
         return 127;
     }
 
-    pid_t pid = fork();
+    pid = fork();
 
     if (pid < 0) {
         perror("miniOS: error al crear proceso hijo (fork)");
@@ -221,7 +231,6 @@ int process_execute_fg(char **argv) {
         /* ---------------------------------------------------------------
          * PROCESO PADRE — Espera bloqueante hasta que el hijo termine.
          * --------------------------------------------------------------- */
-        int status;
         if (waitpid(pid, &status, 0) < 0) {
             perror("miniOS: error en waitpid");
             return -1;
@@ -230,11 +239,11 @@ int process_execute_fg(char **argv) {
         printf("\n");
 
         if (WIFEXITED(status)) {
-            int exit_code = WEXITSTATUS(status);
+            exit_code = WEXITSTATUS(status);
             printf("[PID %d] FINALIZADO | Código de salida: %d\n", pid, exit_code);
             return exit_code;
         } else if (WIFSIGNALED(status)) {
-            int term_sig = WTERMSIG(status);
+            term_sig = WTERMSIG(status);
             printf("[PID %d] TERMINADO POR SEÑAL | Señal: %d\n", pid, term_sig);
             return 128 + term_sig;
         }
@@ -264,6 +273,10 @@ int process_execute_fg(char **argv) {
  * @return PID del hijo si se lanzó, -1 en error, 0 si fue encolado por RAM.
  * ========================================================================= */
 int process_execute_bg(char **argv, int mem_kb) {
+    const mem_config_t *cfg;
+    pid_t pid;
+    int   slot;
+
     if (!argv || !argv[0]) {
         return -1;
     }
@@ -287,7 +300,7 @@ int process_execute_bg(char **argv, int mem_kb) {
      */
     if (memory_alloc(0, mem_kb) != 0) {
         /* RAM simulada insuficiente: alertar y encolar sin crear proceso */
-        const mem_config_t *cfg = memory_get_config();
+        cfg = memory_get_config();
         fprintf(stderr,
                 "[ALERTA RAM] Memoria insuficiente para '%s' "
                 "(Requerido: %d KB | RAM total simulada: %d KB).\n",
@@ -299,7 +312,7 @@ int process_execute_bg(char **argv, int mem_kb) {
     }
 
     /* 3. Fork: solo si hay memoria disponible */
-    pid_t pid = fork();
+    pid = fork();
 
     if (pid < 0) {
         perror("miniOS: error al crear proceso hijo en background (fork)");
@@ -323,7 +336,7 @@ int process_execute_bg(char **argv, int mem_kb) {
          * Registrar el PID en bg_table con metadatos completos (Issue 2.3).
          * NO se llama a waitpid() bloqueante aquí.
          * --------------------------------------------------------------- */
-        int slot = bg_table_add(pid, getpid(), argv, mem_kb);
+        slot = bg_table_add(pid, getpid(), argv, mem_kb);
 
         if (slot < 0) {
             /* Tabla llena: advertir pero el proceso ya está corriendo */
@@ -399,9 +412,17 @@ void process_reap_bg(void) {
  *   ╚════╩════════╩════════╩══════════════════════╩══════════════╩══════════════╝
  * ========================================================================= */
 void process_list_mini(void) {
+    int        total;
+    int        i;
+    int        row;
+    BgProcess *p;
+    char       estado[24];
+    char       ram_str[16];
+    char       cmd_display[21];
+
     /* Contar cuántos slots están en uso para detectar tabla vacía */
-    int total = 0;
-    for (int i = 0; i < MAX_BG_PROCESSES; i++) {
+    total = 0;
+    for (i = 0; i < MAX_BG_PROCESSES; i++) {
         if (s_bg_table[i].used) total++;
     }
 
@@ -417,14 +438,13 @@ void process_list_mini(void) {
     printf("╠════╬════════╬════════╬══════════════════════╬══════════════╬══════════════╣\n");
 
     /* ---- Filas de datos ---- */
-    int row = 1;
-    for (int i = 0; i < MAX_BG_PROCESSES; i++) {
+    row = 1;
+    for (i = 0; i < MAX_BG_PROCESSES; i++) {
         if (!s_bg_table[i].used) continue;
 
-        BgProcess *p = &s_bg_table[i];
+        p = &s_bg_table[i];
 
-        /* Columna Estado */
-        char estado[24];
+        /* Columna Estado — switch exhaustivo sobre ProcessStatus */
         switch (p->status) {
             case PROC_RUNNING:
                 snprintf(estado, sizeof(estado), "RUNNING");
@@ -440,8 +460,7 @@ void process_list_mini(void) {
                 break;
         }
 
-        /* Columna RAM: si ya se liberó (mem_kb==0 y no RUNNING), mostrar "liberada" */
-        char ram_str[16];
+        /* Columna RAM: si ya se liberó (mem_kb==0 y no RUNNING), mostrar 0 */
         if (p->status == PROC_RUNNING) {
             snprintf(ram_str, sizeof(ram_str), "%d KB", p->mem_kb);
         } else {
@@ -449,7 +468,6 @@ void process_list_mini(void) {
         }
 
         /* Truncar comando si supera el ancho de columna */
-        char cmd_display[21];
         snprintf(cmd_display, sizeof(cmd_display), "%s", p->command);
 
         printf("║ %-2d ║ %-6d ║ %-6d ║ %-20s ║ %-12s ║ %-12s ║\n",
