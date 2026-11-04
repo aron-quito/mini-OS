@@ -31,8 +31,8 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 | Identificador Linear | Issue | Título | Estado | Documento de Especificación |
 |:---:|:---:|:---|:---:|:---:|
 | **SIS-46** | 3.1 | Estructuras de datos de memoria y lista de bloques | ✅ Completado (`Done`) | [SIS-46: Estructuras de Memoria y Lista de Bloques](sis-46.md) |
-| **SIS-47** | 3.2 | Comandos de configuración de RAM y presets (`mem-config`) | 🔒 Bloqueado por SIS-46 | *Próximamente* |
-| **SIS-48** | 3.3 | Algoritmo First-Fit — Asignación contigua (`ff_alloc`) y split | 🔒 Bloqueado por SIS-46 | *Próximamente* |
+| **SIS-47** | 3.2 | Comandos de configuración de RAM y presets (`mem-config`, `mem-status`) | ✅ Completado (`Done`) | [SIS-47: Configuración de RAM y Presets](sis-47.md) |
+| **SIS-48** | 3.3 | Algoritmo First-Fit — Asignación contigua (`ff_alloc`) y split | ⏳ Siguiente (`Todo`) | *Próximamente* |
 | **SIS-49** | 3.4 | Algoritmo First-Fit — Liberación (`ff_free`) y coalescencia | 🔒 Bloqueado por SIS-48 | *Próximamente* |
 
 ---
