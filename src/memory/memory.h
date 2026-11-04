@@ -115,6 +115,21 @@ int pag_alloc(int pid, int size_kb);
 int cmd_mem_translate(int pid, int dir_logica);
 
 /**
+ * @brief Visualiza la tabla de páginas de un proceso — Issue 5.3.
+ */
+int cmd_mem_page_table(int argc, char **argv);
+
+/**
+ * @brief Libera los marcos asignados a un proceso en modo Paginación — Issue 5.3.
+ */
+void pag_free(int pid);
+
+/**
+ * @brief Desencolado reactivo de mem_queue tras liberar memoria — Issue 4.4 / 5.3.
+ */
+void mem_queue_process_waiting(void);
+
+/**
  * @brief Libera la memoria de un proceso (ff_free — Issue 3.4).
  */
 int memory_free(int pid);

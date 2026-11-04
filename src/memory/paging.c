@@ -7,6 +7,8 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "paging.h"
 #include "memory.h"
 #include "mem_queue.h"
@@ -103,6 +105,12 @@ int pag_alloc(int pid, int size_kb) {
 
     /* 2. Si no hay suficientes marcos libres, recurrir a la cola de espera (mem_queue) */
     if (frame_table.free_frames < pages_needed) {
+        mem_queue_node_t *front = mem_queue_peek();
+        if (front != NULL && front->pid == pid) {
+            /* Llamado desde mem_queue_process_waiting: aún no cabe, no re-encolar */
+            return -1;
+        }
+
         char cmd_label[32];
         snprintf(cmd_label, sizeof(cmd_label), "PID-%d (%dKB)", pid, size_kb);
         int pos = mem_queue_enqueue(pid, size_kb, cmd_label);
@@ -164,9 +172,167 @@ int paging_alloc(int pid, int size_kb) {
     return pag_alloc(pid, size_kb);
 }
 
+/**
+ * @brief Busca la tabla de páginas (mutable) de un proceso existente.
+ */
+static PageTable *find_mutable_page_table_by_pid(int pid) {
+    for (int i = 0; i < MAX_PROC; i++) {
+        if (page_tables[i].process_id == pid) {
+            return &page_tables[i];
+        }
+    }
+    return NULL;
+}
+
+/**
+ * @brief Desencolado reactivo y asignación automática tras liberación (Issue 4.4 / 5.3).
+ *
+ * Definido con atributo weak para coexistir sin conflicto si mem_queue.c define
+ * su propia versión fuerte en otra rama.
+ */
+void __attribute__((weak)) mem_queue_process_waiting(void) {
+    while (mem_queue_length() > 0) {
+        mem_queue_node_t *front = mem_queue_peek();
+        if (front == NULL) {
+            break;
+        }
+
+        int allocated = 0;
+        if (memory_is_first_fit()) {
+            allocated = (ff_alloc(front->pid, front->size_kb) == 0);
+        } else {
+            allocated = (pag_alloc(front->pid, front->size_kb) == 0);
+        }
+
+        if (allocated) {
+            printf("[AUTO-ALLOC] Proceso en espera PID %d asignado exitosamente en RAM (%d KB).\n",
+                   front->pid, front->size_kb);
+            mem_queue_node_t *node = mem_queue_dequeue();
+            free(node);
+        } else {
+            /* El proceso al frente aún no cabe; mantener orden FIFO estricto */
+            break;
+        }
+    }
+}
+
+/**
+ * @brief Libera los marcos ocupados por un proceso, limpia su PageTable e invoca
+ *        mem_queue_process_waiting() — Issue 5.3 (SIS-56).
+ *
+ * @param pid PID del proceso cuya memoria paginada se libera.
+ */
+void pag_free(int pid) {
+    PageTable *pt = find_mutable_page_table_by_pid(pid);
+    if (pt == NULL) {
+        fprintf(stderr,
+                "[PAG] Advertencia: El proceso con PID %d no tiene páginas asignadas en memoria.\n",
+                pid);
+        return;
+    }
+
+    int freed_frames = 0;
+
+    /* 1. Recorrer las páginas del proceso y devolver sus marcos al pool global */
+    for (int p = 0; p < pt->num_pages && p < MAX_PAGES; p++) {
+        if (pt->pages[p].valid == 1) {
+            int f = pt->pages[p].frame_number;
+            if (f >= 0 && f < MAX_PAGES && frame_table.frame_owner[f] == pid) {
+                frame_table.frame_owner[f] = -1;
+                frame_table.free_frames++;
+                freed_frames++;
+            }
+        }
+        pt->pages[p].valid        = 0;
+        pt->pages[p].frame_number = -1;
+    }
+
+    /* 2. Limpiar metadatos de la tabla de páginas del proceso */
+    pt->num_pages  = 0;
+    pt->process_id = -1;
+
+    printf("[PAG] Memoria liberada para PID %d (%d marco(s) liberado(s) | libres: %d/%d).\n",
+           pid, freed_frames, frame_table.free_frames, frame_table.total_frames);
+
+    /* 3. Intentar asignar memoria a procesos bloqueados en la cola de espera */
+    mem_queue_process_waiting();
+}
+
 int paging_free(int pid) {
-    (void)pid;
-    // Stub base — Se implementará en Issue 5.3 (SIS-56)
+    if (find_mutable_page_table_by_pid(pid) == NULL) {
+        fprintf(stderr,
+                "[PAG] Advertencia: El proceso con PID %d no tiene páginas asignadas en memoria.\n",
+                pid);
+        return -1;
+    }
+    pag_free(pid);
+    return 0;
+}
+
+/**
+ * @brief Visualiza la tabla de páginas asociada a un proceso (mem-page-table <pid>) — Issue 5.3.
+ *
+ * @param argc Cantidad de argumentos.
+ * @param argv Vector de argumentos (argv[0] = "mem-page-table", argv[1] = "<pid>").
+ * @return 0 en éxito, 1 en error.
+ */
+int cmd_mem_page_table(int argc, char **argv) {
+    /* 1. Verificar que el algoritmo activo sea Paginación */
+    if (memory_is_first_fit()) {
+        fprintf(stderr,
+                "[ERROR] 'mem-page-table' solo esta disponible en modo Paginacion.\n"
+                "        Algoritmo activo: First-Fit (particionamiento dinamico contiguo).\n"
+                "        Cambia a modo PAG con 'switch-ram pag' para usar este comando.\n");
+        return 1;
+    }
+
+    /* 2. Parsing defensivo de <pid> */
+    if (argc < 2 || argv == NULL || argv[1] == NULL) {
+        fprintf(stderr, "[ERROR] Uso: mem-page-table <pid>\n");
+        return 1;
+    }
+
+    char *endptr = NULL;
+    long pid_val = strtol(argv[1], &endptr, 10);
+    if (*endptr != '\0' || endptr == argv[1] || pid_val <= 0) {
+        fprintf(stderr, "[ERROR] PID invalido '%s'. Debe ser un entero positivo.\n", argv[1]);
+        return 1;
+    }
+
+    int pid = (int)pid_val;
+
+    /* 3. Buscar la tabla de páginas del proceso */
+    const PageTable *pt = find_mutable_page_table_by_pid(pid);
+    if (pt == NULL || pt->num_pages <= 0) {
+        fprintf(stderr,
+                "[ERROR] El proceso con PID %d no existe o no tiene tabla de páginas activa.\n",
+                pid);
+        return 1;
+    }
+
+    int page_size_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+
+    /* 4. Renderizar tabla de páginas con formato Unicode */
+    printf("╔══════════╦════════════╦══════════╦══════════════════╗\n");
+    printf("║ Página # ║ Marco Fís. ║ Válido   ║ Dir. Base Física ║\n");
+    printf("╠══════════╬════════════╬══════════╬══════════════════╣\n");
+
+    for (int p = 0; p < pt->num_pages && p < MAX_PAGES; p++) {
+        int marco  = pt->pages[p].frame_number;
+        int valido = pt->pages[p].valid;
+        int base_fisica = (valido && marco >= 0) ? (marco * page_size_kb) : 0;
+
+        char dir_buf[24];
+        snprintf(dir_buf, sizeof(dir_buf), "%d KB", base_fisica);
+
+        printf("║ %4d     ║ %5d      ║%s║   %-14s ║\n",
+               p,
+               marco,
+               valido ? "    SÍ    " : "    NO    ",
+               dir_buf);
+    }
+
+    printf("╚══════════╩════════════╩══════════╩══════════════════╝\n");
     return 0;
 }
 
