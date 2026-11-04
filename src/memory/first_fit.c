@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include "first_fit.h"
 #include "memory.h"
+#include "mem_queue.h"
 
 /* Contador global de bloques para IDs únicos (Issue 3.3) */
 int block_counter = 0;
@@ -122,6 +123,9 @@ int ff_free(int pid) {
 
     int merged = merge_adjacent_blocks();
     printf("[FF] Memoria liberada para PID %d. Bloques fusionados: %d\n", pid, merged);
+
+    /* Issue 4.4 (SIS-53): Intentar asignar automáticamente a procesos en espera */
+    mem_queue_process_waiting();
     return 0;
 }
 

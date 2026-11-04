@@ -63,4 +63,13 @@ void mem_queue_clear(void);
  */
 void mem_queue_print(void);
 
+/**
+ * @brief Desencolado reactivo y asignación automática tras liberación (Issue 4.4 / SIS-53).
+ *
+ * Inspecciona la cola FIFO tras liberar memoria e intenta promover los procesos
+ * al frente según el algoritmo activo ("ff" o "pag"), respetando el orden estricto
+ * FIFO (Head-of-Line Blocking si el primero no cabe).
+ */
+void mem_queue_process_waiting(void);
+
 #endif /* MEM_QUEUE_H */

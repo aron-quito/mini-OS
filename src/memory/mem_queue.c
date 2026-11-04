@@ -21,6 +21,8 @@
 #include <string.h>
 #include <time.h>
 #include "mem_queue.h"
+#include "memory.h"
+#include "paging.h"
 
 /* -----------------------------------------------------------------------
  * Estado interno de la cola (singleton estático)
@@ -180,4 +182,43 @@ void mem_queue_print(void) {
     printf("  |  Procesos en espera : %-5d   Total KB solicitado: %-6d KB |\n",
            q.count, q.total_waiting_kb);
     printf("  +-----+--------+--------------------------+---------------------+\n\n");
+}
+
+/* -----------------------------------------------------------------------
+ * mem_queue_process_waiting — Issue 4.4 (SIS-53)
+ *
+ * Desencolado reactivo y asignación automática de memoria tras liberación:
+ *   1. Mientras la cola tenga elementos (q.count > 0), consulta el nodo al
+ *      frente con mem_queue_peek() sin extraerlo.
+ *   2. Intenta asignar memoria según el algoritmo activo en mem_state.algorithm
+ *      ("ff" -> ff_alloc, "pag" -> pag_alloc).
+ *   3. Si tiene éxito: imprime notificación [AUTO-ALLOC], desencola con
+ *      mem_queue_dequeue(), libera el nodo con free() y continúa con el siguiente.
+ *   4. Si falla (no cabe): detiene el ciclo inmediatamente (break) para
+ *      preservar el orden estricto FIFO (Head-of-Line Blocking).
+ * ----------------------------------------------------------------------- */
+void mem_queue_process_waiting(void) {
+    while (q.count > 0) {
+        mem_queue_node_t *front = mem_queue_peek();
+        if (front == NULL) {
+            break;
+        }
+
+        int allocated = 0;
+        if (strcmp(mem_state.algorithm, "ff") == 0) {
+            allocated = (ff_alloc(front->pid, front->size_kb) == 0);
+        } else if (strcmp(mem_state.algorithm, "pag") == 0) {
+            allocated = (pag_alloc(front->pid, front->size_kb) == 0);
+        }
+
+        if (allocated) {
+            printf("[AUTO-ALLOC] Proceso en espera PID %d asignado exitosamente en RAM (%d KB).\n",
+                   front->pid, front->size_kb);
+            mem_queue_node_t *node = mem_queue_dequeue();
+            free(node);
+        } else {
+            /* Head-of-Line Blocking: preservar orden estricto FIFO */
+            break;
+        }
+    }
 }

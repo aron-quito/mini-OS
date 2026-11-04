@@ -161,11 +161,7 @@ int memory_alloc(int pid, int size_kb) {
 
 int memory_free(int pid) {
     if (memory_is_first_fit()) {
-        int r = ff_free(pid);
-        if (r == 0) {
-            mem_queue_process_waiting();
-        }
-        return r;
+        return ff_free(pid);
     }
     return paging_free(pid);
 }
