@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "paging.h"
 
 /* Estado global de la memoria física simulada (Issue 3.1) */
 MemoryState mem_state;
@@ -56,17 +57,26 @@ void mem_reset_blocks(void) {
  * @brief Inicializa mem_state aplicando valores predeterminados (Issue 3.1).
  */
 void mem_init(void) {
-    // Algoritmo por defecto: First-Fit contiguo ("ff")
-    strcpy(mem_state.algorithm, "ff");
+    if (s_mem_config.active_algorithm == MEM_ALGO_PAGING) {
+        strcpy(mem_state.algorithm, "pag");
+    } else {
+        strcpy(mem_state.algorithm, "ff");
+    }
     mem_state.page_size_kb = s_mem_config.page_size_kb;
     mem_state.total_frames = s_mem_config.total_frames;
 
     if (mem_state.total_ram_kb <= 0) {
         mem_state.total_ram_kb = s_mem_config.total_ram_kb;
     }
+    if (mem_state.page_size_kb > 0) {
+        mem_state.total_frames = mem_state.total_ram_kb / mem_state.page_size_kb;
+    }
 
     // Inicializa la lista enlazada con el bloque gigante libre
     mem_reset_blocks();
+
+    // Inicializa las estructuras de paginación (Issue 5.1)
+    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 }
 
 /**
@@ -96,8 +106,7 @@ int memory_alloc(int pid, int size_kb) {
     if (memory_is_first_fit()) {
         return ff_alloc(pid, size_kb);
     }
-    // Modo paginación en Milestone 5
-    return 0;
+    return pag_alloc(pid, size_kb);
 }
 
 int memory_free(int pid) {
@@ -152,6 +161,9 @@ static int has_active_processes(void) {
         if (b->status == BLOCK_USED) return 1;
         b = b->next;
     }
+    if (frame_table.total_frames > 0 && frame_table.free_frames < frame_table.total_frames) {
+        return 1;
+    }
     return 0;
 }
 
@@ -196,6 +208,7 @@ int memory_config_ram(int ram_kb) {
     mem_state.total_ram_kb = ram_kb;
     mem_state.total_frames  = ram_kb / mem_state.page_size_kb; /* consistencia automática */
     mem_reset_blocks();
+    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 
     printf("[OK] RAM total configurada: %d KB\n", ram_kb);
     printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", ram_kb);
@@ -247,6 +260,7 @@ int memory_config_page(int page_kb) {
 
     mem_state.page_size_kb = page_kb;
     mem_state.total_frames  = mem_state.total_ram_kb / page_kb; /* consistencia automática */
+    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 
     printf("[OK] Tamano de pagina establecido a: %d KB\n", page_kb);
     printf("[INFO] Marcos recalculados: %d (RAM = %d KB / pagina = %d KB)\n",
@@ -286,6 +300,7 @@ int memory_config_frames(int frames) {
     mem_state.total_frames  = frames;
     mem_state.total_ram_kb  = new_ram_kb;
     mem_reset_blocks();
+    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 
     printf("[OK] Marcos configurados: %d | RAM recalculada: %d KB (pagina = %d KB)\n",
            frames, new_ram_kb, mem_state.page_size_kb);
@@ -316,6 +331,7 @@ int memory_config_default(void) {
     mem_state.total_frames = frames;
     strcpy(mem_state.algorithm, "ff");
     mem_reset_blocks();
+    paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 
     printf("[OK] Preset aplicado: RAM = %d KB | Pagina = %d KB | Marcos = %d | Algoritmo = First-Fit\n",
            ram_kb, page_kb, frames);
@@ -349,6 +365,12 @@ void memory_status(void) {
         if (b->status == BLOCK_USED) { used_kb += b->size_kb; used_blocks++; }
         else                         { free_kb += b->size_kb; free_blocks++; }
         b = b->next;
+    }
+
+    if (!memory_is_first_fit() && frame_table.total_frames > 0) {
+        int used_frames = frame_table.total_frames - frame_table.free_frames;
+        used_kb = used_frames * mem_state.page_size_kb;
+        free_kb = frame_table.free_frames * mem_state.page_size_kb;
     }
 
     /* Porcentaje con protección contra división por cero */

@@ -1,54 +1,86 @@
 #ifndef PAGING_H
 #define PAGING_H
 
-#define MAX_FRAMES 128
-#define MAX_PAGES 64
+/* =========================================================================
+ * Issue 5.1 (SIS-54): Estructuras de paginación y asignación de marcos
+ * ========================================================================= */
 
-typedef struct {
-    int frame_number;
-    int is_free;
-    int pid;
-} frame_t;
-
-typedef struct {
-    int page_number;
-    int frame_number;
-    int is_valid;
-} page_entry_t;
-
-typedef struct {
-    int pid;
-    int num_pages;
-    page_entry_t pages[MAX_PAGES];
-} page_table_t;
+#define MAX_PAGES 256
+#define MAX_PROC  32
 
 /**
- * @brief Inicializa la tabla de marcos globales de paginación.
+ * @brief Entrada individual en la tabla de páginas de un proceso.
+ */
+typedef struct {
+    int frame_number;   /* Número de marco físico asignado (-1 si inválido) */
+    int valid;          /* 1 si la página está mapeada en RAM, 0 si no */
+} PageEntry;
+
+/**
+ * @brief Tabla de páginas por proceso.
+ */
+typedef struct {
+    int process_id;             /* PID del proceso dueño (-1 si el slot está libre) */
+    int num_pages;              /* Cantidad de páginas lógicas asignadas al proceso */
+    PageEntry pages[MAX_PAGES]; /* Mapeo de página lógica -> marco físico */
+} PageTable;
+
+/**
+ * @brief Tabla global de marcos físicos de la RAM simulada.
+ */
+typedef struct {
+    int total_frames;           /* Total de marcos físicos (total_ram_kb / page_size_kb) */
+    int free_frames;            /* Cantidad de marcos actualmente disponibles */
+    int frame_owner[MAX_PAGES]; /* -1 si libre, PID del proceso si está ocupado */
+} FrameTable;
+
+/* Variables globales del subsistema de paginación (Issue 5.1) */
+extern FrameTable frame_table;
+extern PageTable  page_tables[MAX_PROC];
+
+/**
+ * @brief Inicializa la tabla de marcos globales y las tablas de páginas de procesos.
+ *
+ * @param total_ram_kb Capacidad total de RAM en KB.
+ * @param page_size_kb Tamaño de cada página/marco en KB.
  */
 void paging_init(int total_ram_kb, int page_size_kb);
 
 /**
- * @brief Asigna marcos físicos a las páginas requeridas por el proceso.
+ * @brief Asigna marcos libres (sin requerir contigüidad física) para un proceso — Issue 5.1.
+ *
+ * Calcula el número de páginas con división techo:
+ *   pages_needed = (size_kb + page_size_kb - 1) / page_size_kb
+ * Si no hay suficientes marcos libres, encola la solicitud en mem_queue y retorna -1.
+ *
+ * @param pid     PID del proceso solicitante.
+ * @param size_kb Tamaño solicitado en KB (> 0).
+ * @return 0 en éxito, -1 si los marcos son insuficientes o ocurre un error.
+ */
+int pag_alloc(int pid, int size_kb);
+
+/**
+ * @brief Alias compatible de pag_alloc.
  */
 int paging_alloc(int pid, int size_kb);
 
 /**
- * @brief Libera los marcos ocupados por un proceso.
+ * @brief Libera los marcos ocupados por un proceso (Issue 5.3).
  */
 int paging_free(int pid);
 
 /**
- * @brief Traduce una dirección lógica a física.
+ * @brief Traduce una dirección lógica a física (Issue 5.2).
  */
 int paging_translate(int pid, int logical_address, int *out_physical_address);
 
 /**
- * @brief Visualiza el estado de los marcos y tablas de páginas.
+ * @brief Visualiza el estado de los marcos y tablas de páginas (Issue 5.3 / 6.1).
  */
 void paging_view(void);
 
 /**
- * @brief Libera estructuras asociadas a la paginación.
+ * @brief Reinicia las estructuras asociadas a la paginación.
  */
 void paging_cleanup(void);
 

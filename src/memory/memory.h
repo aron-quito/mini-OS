@@ -100,6 +100,11 @@ int ff_free(int pid);
 int merge_adjacent_blocks(void);
 
 /**
+ * @brief Asignación de marcos físicos no contiguos en modo Paginación — Issue 5.1.
+ */
+int pag_alloc(int pid, int size_kb);
+
+/**
  * @brief Libera la memoria de un proceso (stub para Issue 3.4 / ff_free).
  */
 int memory_free(int pid);
