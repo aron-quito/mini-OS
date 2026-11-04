@@ -70,6 +70,21 @@ int paging_alloc(int pid, int size_kb);
 int paging_free(int pid);
 
 /**
+ * @brief Traduce una dirección lógica (en KB) a dirección física e imprime el desglose — Issue 5.2.
+ *
+ * Formulación:
+ *   num_pagina   = dir_logica / page_size_kb
+ *   offset       = dir_logica % page_size_kb
+ *   marco_fisico = PageTable[pid].pages[num_pagina].frame_number
+ *   dir_fisica   = (marco_fisico * page_size_kb) + offset
+ *
+ * @param pid          PID del proceso dueño del espacio lógico.
+ * @param dir_logica   Dirección lógica en KB (>= 0).
+ * @return 0 en éxito, -1 en error (modo FF activo, PID inexistente o fallo de segmentación).
+ */
+int cmd_mem_translate(int pid, int dir_logica);
+
+/**
  * @brief Traduce una dirección lógica a física (Issue 5.2).
  */
 int paging_translate(int pid, int logical_address, int *out_physical_address);

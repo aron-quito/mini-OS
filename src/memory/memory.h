@@ -110,6 +110,11 @@ int merge_adjacent_blocks(void);
 int pag_alloc(int pid, int size_kb);
 
 /**
+ * @brief Traduce una dirección lógica a física bajo Paginación — Issue 5.2.
+ */
+int cmd_mem_translate(int pid, int dir_logica);
+
+/**
  * @brief Libera la memoria de un proceso (ff_free — Issue 3.4).
  */
 int memory_free(int pid);

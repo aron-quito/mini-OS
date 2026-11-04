@@ -29,6 +29,7 @@
 #include "../memory/memory.h"
 #include "../threads/producer_consumer.h" /* thread_demo_run, thread_get_stats -- Issues 7.3 / 7.4 */
 #include "../memory/mem_queue.h"             /* mem_queue_print -- Issue 4.2 (SIS-51) */
+#include "../memory/paging.h"                /* cmd_mem_translate -- Issue 5.2 (SIS-55) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +46,7 @@ static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_alloc(Command *cmd);            /* Issue 4.2 (SIS-51) */
 static int builtin_mem_free(Command *cmd);             /* Issue 4.2 (SIS-51) */
+static int builtin_mem_translate(Command *cmd);        /* Issue 5.2 (SIS-55) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
@@ -61,18 +63,20 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",         builtin_help         },
-    { "clear",        builtin_clear        },
-    { "exit",         builtin_exit         },
-    { "ps-mini",      builtin_ps_mini      }, /* Issue 2.3 (SIS-44) */
-    { "thread-demo",  builtin_thread_demo  }, /* Issue 7.3 (SIS-62) */
-    { "thread-stats", builtin_thread_stats }, /* Issue 7.4 (SIS-63) */
+    { "help",          builtin_help          },
+    { "clear",         builtin_clear         },
+    { "exit",          builtin_exit          },
+    { "ps-mini",       builtin_ps_mini       }, /* Issue 2.3 (SIS-44) */
+    { "thread-demo",   builtin_thread_demo   }, /* Issue 7.3 (SIS-62) */
+    { "thread-stats",  builtin_thread_stats  }, /* Issue 7.4 (SIS-63) */
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
-    { "mem-config",   builtin_mem_config   },
-    { "mem-status",   builtin_mem_status   },
+    { "mem-config",    builtin_mem_config    },
+    { "mem-status",    builtin_mem_status    },
     /* Issue 4.2 (SIS-51): Asignacion y liberacion de memoria con encolado reactivo */
-    { "mem-alloc",   builtin_mem_alloc    },
-    { "mem-free",    builtin_mem_free     },
+    { "mem-alloc",     builtin_mem_alloc     },
+    { "mem-free",      builtin_mem_free      },
+    /* Issue 5.2 (SIS-55): Traduccion de direccion logica a fisica en Paginacion */
+    { "mem-translate", builtin_mem_translate },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -148,6 +152,9 @@ static int builtin_help(Command *cmd) {
         printf("    mem-config frames <N>    Configura N marcos; recalcula RAM = N x page_size.\n");
         printf("    mem-config default       Preset: 1024 KB RAM, 64 KB/pagina, 16 marcos, FF.\n");
         printf("    mem-status               Muestra el resumen del estado de la memoria.\n");
+        printf("    mem-alloc <pid> <kb>     Asigna memoria RAM a un proceso o lo encola.\n");
+        printf("    mem-free <pid>           Libera la memoria ocupada por un proceso.\n");
+        printf("    mem-translate <pid> <d>  Traduce una direccion logica a fisica (modo PAG).\n");
         printf("    mem-view                 Muestra el mapa visual de bloques (Issue 6.1).\n");
         printf("\n");
         return 0;
@@ -248,6 +255,16 @@ static int builtin_help(Command *cmd) {
         printf("      <pid>  PID del proceso cuya memoria se libera.\n\n");
         printf("    Ejemplo:\n");
         printf("      mem-free 42\n\n");
+    } else if (strcmp(topic, "mem-translate") == 0) {
+        printf("\n  mem-translate <pid> <dir_logica>\n");
+        printf("    Traduce una direccion logica (KB) a su direccion fisica correspondiente\n");
+        printf("    usando la tabla de paginas del proceso (exclusivo del modo Paginacion).\n\n");
+        printf("    Formulacion:\n");
+        printf("      num_pagina   = dir_logica / page_size_kb\n");
+        printf("      offset       = dir_logica %% page_size_kb\n");
+        printf("      dir_fisica   = (marco_fisico * page_size_kb) + offset\n\n");
+        printf("    Ejemplo:\n");
+        printf("      mem-translate 42 192\n\n");
     } else if (strcmp(topic, "mem-view") == 0) {
         printf("\n  mem-view\n");
         printf("    Visualiza el mapa de asignacion de marcos/paginas y fragmentacion de memoria.\n\n");
@@ -531,6 +548,40 @@ static int builtin_mem_free(Command *cmd) {
     }
 
     return memory_free((int)pid) == 0 ? 0 : 1;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 5.2 (SIS-55) -- Handler de mem-translate <pid> <dir_logica>
+ * ----------------------------------------------------------------------- */
+static int builtin_mem_translate(Command *cmd) {
+    if (memory_is_first_fit()) {
+        fprintf(stderr,
+                "[ERROR] 'mem-translate' solo esta disponible en modo Paginacion.\n"
+                "        Algoritmo activo: First-Fit (particionamiento dinamico contiguo).\n"
+                "        Cambia a modo PAG con 'switch-ram pag' para usar este comando.\n");
+        return 1;
+    }
+
+    if (cmd->argc < 3) {
+        fprintf(stderr, "[ERROR] Uso: mem-translate <pid> <dir_logica>\n");
+        return 1;
+    }
+
+    char *endptr1 = NULL, *endptr2 = NULL;
+    long pid        = strtol(cmd->argv[1], &endptr1, 10);
+    long dir_logica = strtol(cmd->argv[2], &endptr2, 10);
+
+    if (*endptr1 != '\0' || endptr1 == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] PID invalido '%s'. Debe ser un entero positivo.\n", cmd->argv[1]);
+        return 1;
+    }
+    if (*endptr2 != '\0' || endptr2 == cmd->argv[2]) {
+        fprintf(stderr, "[ERROR] Direccion logica invalida '%s'. Debe ser un valor numerico en KB.\n",
+                cmd->argv[2]);
+        return 1;
+    }
+
+    return (cmd_mem_translate((int)pid, (int)dir_logica) == 0) ? 0 : 1;
 }
 
 /* -----------------------------------------------------------------------

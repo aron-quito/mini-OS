@@ -170,13 +170,103 @@ int paging_free(int pid) {
     return 0;
 }
 
-int paging_translate(int pid, int logical_address, int *out_physical_address) {
-    (void)pid;
-    (void)logical_address;
-    if (out_physical_address) {
-        *out_physical_address = 0;
+/**
+ * @brief Busca la tabla de páginas de un proceso existente.
+ *
+ * @param pid PID del proceso.
+ * @return Puntero a la PageTable correspondiente, o NULL si no existe.
+ */
+static const PageTable *find_page_table_by_pid(int pid) {
+    for (int i = 0; i < MAX_PROC; i++) {
+        if (page_tables[i].process_id == pid) {
+            return &page_tables[i];
+        }
     }
-    // Stub base — Se implementará en Issue 5.2 (SIS-55)
+    return NULL;
+}
+
+/**
+ * @brief Traduce una dirección lógica a dirección física (Issue 5.2 / SIS-55).
+ *
+ * 1. Verifica que el algoritmo activo sea Paginación ("pag").
+ * 2. Localiza la PageTable del proceso (pid).
+ * 3. Calcula num_pagina = dir_logica / page_size_kb y offset = dir_logica % page_size_kb.
+ * 4. Verifica límites de páginas y valid == 1 (detecta fallo de segmentación).
+ * 5. Calcula dir_fisica = (marco_fisico * page_size_kb) + offset e imprime el resultado.
+ */
+int cmd_mem_translate(int pid, int dir_logica) {
+    /* 1. Verificar que el algoritmo activo sea Paginación */
+    if (memory_is_first_fit()) {
+        fprintf(stderr,
+                "[ERROR] 'mem-translate' solo esta disponible en modo Paginacion.\n"
+                "        Algoritmo activo: First-Fit (particionamiento dinamico contiguo).\n"
+                "        Cambia a modo PAG con 'switch-ram pag' para usar este comando.\n");
+        return -1;
+    }
+
+    /* 2. Buscar el proceso en page_tables */
+    const PageTable *pt = find_page_table_by_pid(pid);
+    if (pt == NULL) {
+        fprintf(stderr,
+                "[ERROR] El proceso con PID %d no existe o no tiene páginas asignadas en memoria.\n",
+                pid);
+        return -1;
+    }
+
+    /* 3. Validar dirección lógica no negativa y tamaño de página válido */
+    int page_size_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    if (dir_logica < 0) {
+        fprintf(stderr, "[ERROR] Fallo de segmentación / página no asignada.\n");
+        return -1;
+    }
+
+    /* 4. Cálculo de número de página y desplazamiento (offset) */
+    int num_pagina = dir_logica / page_size_kb;
+    int offset     = dir_logica % page_size_kb;
+
+    /* 5. Validar límites de página y bit de validez */
+    if (num_pagina < 0 || num_pagina >= pt->num_pages ||
+        num_pagina >= MAX_PAGES || pt->pages[num_pagina].valid == 0) {
+        fprintf(stderr, "[ERROR] Fallo de segmentación / página no asignada.\n");
+        return -1;
+    }
+
+    /* 6. Obtener marco físico y calcular dirección física */
+    int marco_fisico = pt->pages[num_pagina].frame_number;
+    int dir_fisica   = (marco_fisico * page_size_kb) + offset;
+
+    printf("[PAG] PID %d | Dir. Lógica: %d KB -> Dir. Física: %d KB\n"
+           "      (Página: %d, Marco Físico: %d, Desplazamiento: %d KB)\n",
+           pid, dir_logica, dir_fisica, num_pagina, marco_fisico, offset);
+
+    return 0;
+}
+
+int paging_translate(int pid, int logical_address, int *out_physical_address) {
+    if (memory_is_first_fit() || logical_address < 0) {
+        return -1;
+    }
+
+    const PageTable *pt = find_page_table_by_pid(pid);
+    if (pt == NULL) {
+        return -1;
+    }
+
+    int page_size_kb = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    int num_pagina   = logical_address / page_size_kb;
+    int offset       = logical_address % page_size_kb;
+
+    if (num_pagina < 0 || num_pagina >= pt->num_pages ||
+        num_pagina >= MAX_PAGES || pt->pages[num_pagina].valid == 0) {
+        return -1;
+    }
+
+    int marco_fisico = pt->pages[num_pagina].frame_number;
+    int dir_fisica   = (marco_fisico * page_size_kb) + offset;
+
+    if (out_physical_address != NULL) {
+        *out_physical_address = dir_fisica;
+    }
     return 0;
 }
 
