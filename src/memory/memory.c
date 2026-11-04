@@ -120,3 +120,285 @@ void memory_cleanup(void) {
     }
     mem_state.block_list = NULL;
 }
+
+/* =========================================================================
+ * Issue 3.2 (SIS-47): Lógica de configuración de RAM y presets
+ * ========================================================================= */
+
+/* --- Helpers privados --------------------------------------------------- */
+
+/**
+ * Verifica si n es potencia de 2 y mayor que 0.
+ * Truco de bitmask: n & (n-1) == 0 solo para potencias de 2.
+ */
+static int is_power_of_two(int n) {
+    return (n > 0) && ((n & (n - 1)) == 0);
+}
+
+/**
+ * Recorre la lista de bloques buscando al menos uno BLOCK_USED.
+ * Si los hay, la reconfiguración debe ser rechazada (Issue 3.2).
+ *
+ * @return 1 si hay procesos activos, 0 si toda la RAM está libre.
+ */
+static int has_active_processes(void) {
+    const MemBlock *b = mem_state.block_list;
+    while (b != NULL) {
+        if (b->status == BLOCK_USED) return 1;
+        b = b->next;
+    }
+    return 0;
+}
+
+/* --- Implementación de comandos de configuración (Issue 3.2) ------------ */
+
+int memory_is_first_fit(void) {
+    return strcmp(mem_state.algorithm, "ff") == 0;
+}
+
+/**
+ * mem-config ram <KB>
+ *
+ * Redefine la RAM total. Validaciones:
+ *   1. KB > 0.
+ *   2. KB es múltiplo de page_size_kb.
+ *   3. No hay procesos activos en memoria.
+ * Si pasa, actualiza mem_state, recalcula total_frames y regenera
+ * el bloque gigante libre con mem_reset_blocks().
+ */
+int memory_config_ram(int ram_kb) {
+    if (ram_kb <= 0) {
+        fprintf(stderr, "[ERROR] 'mem-config ram' requiere un entero positivo.\n"
+                        "        Uso: mem-config ram <KB>\n");
+        return 1;
+    }
+
+    if (ram_kb % mem_state.page_size_kb != 0) {
+        fprintf(stderr,
+            "[ERROR] %d KB no es multiplo del tamano de pagina actual (%d KB).\n"
+            "        Ajusta primero la pagina con 'mem-config page <KB>'.\n",
+            ram_kb, mem_state.page_size_kb);
+        return 1;
+    }
+
+    if (has_active_processes()) {
+        fprintf(stderr,
+            "[ERROR] No se puede reconfigurar la RAM: hay procesos activos en memoria.\n"
+            "        Libera la memoria con 'mem-free <pid>' antes de reconfigurar.\n");
+        return 1;
+    }
+
+    mem_state.total_ram_kb = ram_kb;
+    mem_state.total_frames  = ram_kb / mem_state.page_size_kb; /* consistencia automática */
+    mem_reset_blocks();
+
+    printf("[OK] RAM total configurada: %d KB\n", ram_kb);
+    printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", ram_kb);
+    printf("[INFO] Marcos recalculados: %d (pagina = %d KB)\n",
+           mem_state.total_frames, mem_state.page_size_kb);
+    return 0;
+}
+
+/**
+ * mem-config page <KB>
+ *
+ * Establece el tamaño de página (parámetro latente para Paginación).
+ * Validaciones:
+ *   1. page_kb > 0.
+ *   2. Debe ser potencia de 2.
+ *   3. ram_kb actual debe ser múltiplo del nuevo page_size_kb.
+ *   4. No hay procesos activos en memoria.
+ * Recalcula total_frames automáticamente. En modo FF muestra aviso de
+ * que el parámetro es latente y solo activará en modo PAG.
+ */
+int memory_config_page(int page_kb) {
+    if (page_kb <= 0) {
+        fprintf(stderr, "[ERROR] 'mem-config page' requiere un entero positivo.\n"
+                        "        Uso: mem-config page <KB>\n");
+        return 1;
+    }
+
+    if (!is_power_of_two(page_kb)) {
+        fprintf(stderr,
+            "[ERROR] %d KB no es potencia de 2. Valores validos: 4, 8, 16, 32, 64, 128, 256...\n",
+            page_kb);
+        return 1;
+    }
+
+    if (mem_state.total_ram_kb % page_kb != 0) {
+        fprintf(stderr,
+            "[ERROR] La RAM actual (%d KB) no es multiplo del nuevo tamano de pagina (%d KB).\n"
+            "        Reconfigura primero la RAM con 'mem-config ram <KB>'.\n",
+            mem_state.total_ram_kb, page_kb);
+        return 1;
+    }
+
+    if (has_active_processes()) {
+        fprintf(stderr,
+            "[ERROR] No se puede reconfigurar la pagina: hay procesos activos en memoria.\n"
+            "        Libera la memoria con 'mem-free <pid>' antes de reconfigurar.\n");
+        return 1;
+    }
+
+    mem_state.page_size_kb = page_kb;
+    mem_state.total_frames  = mem_state.total_ram_kb / page_kb; /* consistencia automática */
+
+    printf("[OK] Tamano de pagina establecido a: %d KB\n", page_kb);
+    printf("[INFO] Marcos recalculados: %d (RAM = %d KB / pagina = %d KB)\n",
+           mem_state.total_frames, mem_state.total_ram_kb, page_kb);
+
+    if (memory_is_first_fit()) {
+        printf("[INFO] Modo actual: First-Fit (particionamiento dinamico continuo sin marcos).\n");
+        printf("       Este parametro solo se activara al cambiar a modo Paginacion.\n");
+    }
+    return 0;
+}
+
+/**
+ * mem-config frames <N>
+ *
+ * Establece N marcos y recalcula RAM = N * page_size_kb.
+ * Regenera el bloque gigante libre con la nueva RAM.
+ * Validaciones:
+ *   1. N > 0.
+ *   2. No hay procesos activos en memoria.
+ */
+int memory_config_frames(int frames) {
+    if (frames <= 0) {
+        fprintf(stderr, "[ERROR] 'mem-config frames' requiere un entero positivo.\n"
+                        "        Uso: mem-config frames <N>\n");
+        return 1;
+    }
+
+    if (has_active_processes()) {
+        fprintf(stderr,
+            "[ERROR] No se puede reconfigurar los marcos: hay procesos activos en memoria.\n"
+            "        Libera la memoria con 'mem-free <pid>' antes de reconfigurar.\n");
+        return 1;
+    }
+
+    int new_ram_kb = frames * mem_state.page_size_kb;
+    mem_state.total_frames  = frames;
+    mem_state.total_ram_kb  = new_ram_kb;
+    mem_reset_blocks();
+
+    printf("[OK] Marcos configurados: %d | RAM recalculada: %d KB (pagina = %d KB)\n",
+           frames, new_ram_kb, mem_state.page_size_kb);
+    printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", new_ram_kb);
+    return 0;
+}
+
+/**
+ * mem-config default
+ *
+ * Preset seguro del Issue 3.2: 1024 KB RAM, 64 KB/página, 16 marcos, First-Fit.
+ * Rechazado si hay procesos activos en memoria.
+ */
+int memory_config_default(void) {
+    if (has_active_processes()) {
+        fprintf(stderr,
+            "[ERROR] No se puede aplicar el preset: hay procesos activos en memoria.\n"
+            "        Libera la memoria con 'mem-free <pid>' antes de reconfigurar.\n");
+        return 1;
+    }
+
+    const int ram_kb  = 1024;
+    const int page_kb = 64;
+    const int frames  = ram_kb / page_kb; /* 16 */
+
+    mem_state.total_ram_kb = ram_kb;
+    mem_state.page_size_kb = page_kb;
+    mem_state.total_frames = frames;
+    strcpy(mem_state.algorithm, "ff");
+    mem_reset_blocks();
+
+    printf("[OK] Preset aplicado: RAM = %d KB | Pagina = %d KB | Marcos = %d | Algoritmo = First-Fit\n",
+           ram_kb, page_kb, frames);
+    printf("[INFO] Particionamiento dinamico: 1 bloque libre continuo de %d KB inicializado.\n", ram_kb);
+    return 0;
+}
+
+/**
+ * Helper para imprimir una fila formateada y perfectamente alineada
+ * dentro del marco de la tabla de mem-status.
+ * Ancho total de la fila: exactamente 52 caracteres (incluyendo bordes).
+ */
+static void print_status_row(const char *label, const char *value) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%-12s: %s", label, value);
+    printf("  |  %-44s  |\n", buf);
+}
+
+/**
+ * mem-status
+ *
+ * Calcula KB usados/libres y bloques iterando la lista enlazada.
+ * Presenta el resumen adaptado al algoritmo activo con alineación exacta.
+ */
+void memory_status(void) {
+    int used_kb     = 0, free_kb     = 0;
+    int used_blocks = 0, free_blocks = 0;
+
+    const MemBlock *b = mem_state.block_list;
+    while (b != NULL) {
+        if (b->status == BLOCK_USED) { used_kb += b->size_kb; used_blocks++; }
+        else                         { free_kb += b->size_kb; free_blocks++; }
+        b = b->next;
+    }
+
+    /* Porcentaje con protección contra división por cero */
+    float pct_used = (mem_state.total_ram_kb > 0)
+        ? (100.0f * used_kb / mem_state.total_ram_kb) : 0.0f;
+    float pct_free = 100.0f - pct_used;
+
+    const char *algo_name = memory_is_first_fit()
+        ? "First-Fit (Particion Dinamica)"
+        : "Paginacion (Marcos Fijos)";
+
+    char val_buf[64];
+
+    printf("\n");
+    printf("  +================================================+\n");
+    printf("  |          ESTADO DE MEMORIA -- MiniOS           |\n");
+    printf("  +================================================+\n");
+
+    snprintf(val_buf, sizeof(val_buf), "%d KB", mem_state.total_ram_kb);
+    print_status_row("RAM total", val_buf);
+
+    print_status_row("Algoritmo", algo_name);
+
+    if (memory_is_first_fit()) {
+        /* Modo FF: información de bloques dinámicos */
+        print_status_row("Esquema", "Bloques contiguos variables");
+
+        snprintf(val_buf, sizeof(val_buf), "%d", free_blocks);
+        print_status_row("Bloques lib.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", used_blocks);
+        print_status_row("Bloques uso.", val_buf);
+    } else {
+        /* Modo PAG: información de marcos */
+        snprintf(val_buf, sizeof(val_buf), "%d KB", mem_state.page_size_kb);
+        print_status_row("Tamano pag.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", mem_state.total_frames);
+        print_status_row("Marcos tot.", val_buf);
+
+        int used_frames = (mem_state.page_size_kb > 0)
+            ? used_kb / mem_state.page_size_kb : 0;
+        snprintf(val_buf, sizeof(val_buf), "%d", mem_state.total_frames - used_frames);
+        print_status_row("Marcos lib.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", used_frames);
+        print_status_row("Marcos uso.", val_buf);
+    }
+
+    snprintf(val_buf, sizeof(val_buf), "%d KB (%.1f%%)", free_kb, pct_free);
+    print_status_row("Libre", val_buf);
+
+    snprintf(val_buf, sizeof(val_buf), "%d KB (%.1f%%)", used_kb, pct_used);
+    print_status_row("Usado", val_buf);
+
+    printf("  +================================================+\n");
+    printf("\n");
+}
