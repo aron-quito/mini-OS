@@ -411,3 +411,15 @@ void paging_view(void) {
 void paging_cleanup(void) {
     paging_init(mem_state.total_ram_kb, mem_state.page_size_kb);
 }
+
+int paging_can_alloc(int size_kb) {
+    if (size_kb <= 0 || size_kb > mem_state.total_ram_kb) {
+        return 0;
+    }
+    int page_size = (mem_state.page_size_kb > 0) ? mem_state.page_size_kb : DEFAULT_PAGE_KB;
+    int pages_needed = (size_kb + page_size - 1) / page_size;
+    if (pages_needed > MAX_PAGES) {
+        return 0;
+    }
+    return (frame_table.free_frames >= pages_needed) ? 1 : 0;
+}

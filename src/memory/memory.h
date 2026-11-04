@@ -135,6 +135,12 @@ void mem_queue_process_waiting(void);
 int memory_free(int pid);
 
 /**
+ * @brief Consulta si la memoria actual puede albergar size_kb.
+ * @return 1 si cabe actualmente, 0 si no cabe temporalmente, -1 si excede la RAM total del sistema.
+ */
+int memory_can_allocate(int size_kb);
+
+/**
  * @brief Reasigna el PID de un bloque de memoria de old_pid a new_pid.
  *
  * Se usa en process_execute_bg() justo después del fork(): la memoria fue

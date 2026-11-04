@@ -23,6 +23,7 @@
 #include "mem_queue.h"
 #include "memory.h"
 #include "paging.h"
+#include "../process/process.h"
 
 /* -----------------------------------------------------------------------
  * Estado interno de la cola (singleton estático)
@@ -45,14 +46,34 @@ void mem_queue_init(void) {
 }
 
 /* -----------------------------------------------------------------------
- * mem_queue_enqueue
+ * mem_queue_free_node
  * ----------------------------------------------------------------------- */
-int mem_queue_enqueue(int pid, int size_kb, const char *command) {
+void mem_queue_free_node(mem_queue_node_t *node) {
+    if (!node) return;
+    if (node->argv) {
+        for (int i = 0; i < node->argc; i++) {
+            if (node->argv[i]) {
+                free(node->argv[i]);
+            }
+        }
+        free(node->argv);
+        node->argv = NULL;
+    }
+    free(node);
+}
+
+/* -----------------------------------------------------------------------
+ * mem_queue_enqueue_alloc
+ * ----------------------------------------------------------------------- */
+int mem_queue_enqueue_alloc(int pid, int size_kb, const char *command) {
     mem_queue_node_t *node = malloc(sizeof(mem_queue_node_t));
     if (!node) return -1;
 
+    node->type        = MEM_REQ_ALLOC;
     node->pid         = pid;
     node->size_kb     = size_kb;
+    node->argv        = NULL;
+    node->argc        = 0;
     node->enqueued_at = time(NULL);
     node->next        = NULL;
     strncpy(node->command, command ? command : "", sizeof(node->command) - 1);
@@ -70,6 +91,53 @@ int mem_queue_enqueue(int pid, int size_kb, const char *command) {
     q.count            += 1;
     q.total_waiting_kb += size_kb;
     return q.count;   /* Posición 1-based */
+}
+
+/* -----------------------------------------------------------------------
+ * mem_queue_enqueue_launch
+ * ----------------------------------------------------------------------- */
+int mem_queue_enqueue_launch(char **argv, int argc, int size_kb, const char *cmd_display) {
+    mem_queue_node_t *node = malloc(sizeof(mem_queue_node_t));
+    if (!node) return -1;
+
+    node->type        = MEM_REQ_LAUNCH;
+    node->pid         = 0;
+    node->size_kb     = size_kb;
+    node->argc        = argc;
+    node->argv        = malloc((argc + 1) * sizeof(char *));
+    if (!node->argv) {
+        free(node);
+        return -1;
+    }
+
+    for (int i = 0; i < argc; i++) {
+        node->argv[i] = strdup(argv[i]);
+    }
+    node->argv[argc] = NULL;
+
+    node->enqueued_at = time(NULL);
+    node->next        = NULL;
+    strncpy(node->command, cmd_display ? cmd_display : "", sizeof(node->command) - 1);
+    node->command[sizeof(node->command) - 1] = '\0';
+
+    if (q.rear == NULL) {
+        q.front = node;
+        q.rear  = node;
+    } else {
+        q.rear->next = node;
+        q.rear       = node;
+    }
+
+    q.count            += 1;
+    q.total_waiting_kb += size_kb;
+    return q.count;
+}
+
+/* -----------------------------------------------------------------------
+ * mem_queue_enqueue (compatibilidad por defecto ALLOC)
+ * ----------------------------------------------------------------------- */
+int mem_queue_enqueue(int pid, int size_kb, const char *command) {
+    return mem_queue_enqueue_alloc(pid, size_kb, command);
 }
 
 /* -----------------------------------------------------------------------
@@ -103,7 +171,7 @@ int mem_queue_remove(int pid) {
     mem_queue_node_t *cur  = q.front;
 
     while (cur != NULL) {
-        if (cur->pid == pid) {
+        if (cur->pid == pid && cur->type == MEM_REQ_ALLOC) {
             /* Desencadenar el nodo */
             if (prev == NULL) {
                 q.front = cur->next;
@@ -114,7 +182,7 @@ int mem_queue_remove(int pid) {
 
             q.count            -= 1;
             q.total_waiting_kb -= cur->size_kb;
-            free(cur);
+            mem_queue_free_node(cur);
             return 0;
         }
         prev = cur;
@@ -137,7 +205,7 @@ void mem_queue_clear(void) {
     mem_queue_node_t *cur = q.front;
     while (cur != NULL) {
         mem_queue_node_t *tmp = cur->next;
-        free(cur);
+        mem_queue_free_node(cur);
         cur = tmp;
     }
     q.front            = NULL;
@@ -171,8 +239,15 @@ void mem_queue_print(void) {
         int  mm      = (int)(elapsed / 60);
         int  ss      = (int)(elapsed % 60);
 
-        printf("  | %-3d | %-6d | %-24s | %02d:%02d                |\n",
-               pos, cur->pid, cur->command, mm, ss);
+        char pid_str[16];
+        if (cur->type == MEM_REQ_LAUNCH) {
+            snprintf(pid_str, sizeof(pid_str), "PEND");
+        } else {
+            snprintf(pid_str, sizeof(pid_str), "%d", cur->pid);
+        }
+
+        printf("  | %-3d | %-6s | %-24s | %02d:%02d                |\n",
+               pos, pid_str, cur->command, mm, ss);
 
         pos++;
         cur = cur->next;
@@ -187,15 +262,17 @@ void mem_queue_print(void) {
 /* -----------------------------------------------------------------------
  * mem_queue_process_waiting — Issue 4.4 (SIS-53)
  *
- * Desencolado reactivo y asignación automática de memoria tras liberación:
+ * Desencolado reactivo y asignación/lanzamiento automático tras liberación:
  *   1. Mientras la cola tenga elementos (q.count > 0), consulta el nodo al
  *      frente con mem_queue_peek() sin extraerlo.
- *   2. Intenta asignar memoria según el algoritmo activo en mem_state.algorithm
- *      ("ff" -> ff_alloc, "pag" -> pag_alloc).
- *   3. Si tiene éxito: imprime notificación [AUTO-ALLOC], desencola con
- *      mem_queue_dequeue(), libera el nodo con free() y continúa con el siguiente.
- *   4. Si falla (no cabe): detiene el ciclo inmediatamente (break) para
- *      preservar el orden estricto FIFO (Head-of-Line Blocking).
+ *   2. Verifica si cabe en memoria con memory_can_allocate(front->size_kb).
+ *   3. Si no cabe: detiene el ciclo inmediatamente (break) para preservar
+ *      el orden estricto FIFO (Head-of-Line Blocking).
+ *   4. Si cabe:
+ *      - MEM_REQ_ALLOC: asigna memoria simulada (ff_alloc / pag_alloc).
+ *      - MEM_REQ_LAUNCH: bifurca y lanza el proceso real con process_spawn_bg,
+ *        asignándole el PID real recién creado.
+ *      - Desencola y libera el nodo.
  * ----------------------------------------------------------------------- */
 void mem_queue_process_waiting(void) {
     while (q.count > 0) {
@@ -204,21 +281,45 @@ void mem_queue_process_waiting(void) {
             break;
         }
 
-        int allocated = 0;
-        if (strcmp(mem_state.algorithm, "ff") == 0) {
-            allocated = (ff_alloc(front->pid, front->size_kb) == 0);
-        } else if (strcmp(mem_state.algorithm, "pag") == 0) {
-            allocated = (pag_alloc(front->pid, front->size_kb) == 0);
+        /* 1. Comprobar si cabe en memoria */
+        int can_alloc = memory_can_allocate(front->size_kb);
+        if (can_alloc != 1) {
+            /* Head-of-Line Blocking: Si el proceso al frente no cabe,
+             * se detiene para respetar el orden estricto FIFO. */
+            break;
         }
 
-        if (allocated) {
-            printf("[AUTO-ALLOC] Proceso en espera PID %d asignado exitosamente en RAM (%d KB).\n",
-                   front->pid, front->size_kb);
-            mem_queue_node_t *node = mem_queue_dequeue();
-            free(node);
-        } else {
-            /* Head-of-Line Blocking: preservar orden estricto FIFO */
-            break;
+        /* 2. Procesar según tipo */
+        if (front->type == MEM_REQ_ALLOC) {
+            int allocated = 0;
+            if (memory_is_first_fit()) {
+                allocated = (ff_alloc(front->pid, front->size_kb) == 0);
+            } else {
+                allocated = (pag_alloc(front->pid, front->size_kb) == 0);
+            }
+
+            if (allocated) {
+                printf("[AUTO-ALLOC] Proceso en espera PID %d asignado exitosamente en RAM (%d KB).\n",
+                       front->pid, front->size_kb);
+                mem_queue_node_t *node = mem_queue_dequeue();
+                mem_queue_free_node(node);
+            } else {
+                break;
+            }
+        } else if (front->type == MEM_REQ_LAUNCH) {
+            printf("[AUTO-LAUNCH] Memoria disponible detectada (%d KB). Lanzando '%s' desde la cola...\n",
+                   front->size_kb, front->command);
+
+            int launched_pid = process_spawn_bg(front->argv, front->size_kb);
+            if (launched_pid > 0) {
+                mem_queue_node_t *node = mem_queue_dequeue();
+                mem_queue_free_node(node);
+            } else {
+                fprintf(stderr, "[ERROR] Falló el lanzamiento del proceso en cola '%s'.\n",
+                        front->command);
+                mem_queue_node_t *node = mem_queue_dequeue();
+                mem_queue_free_node(node);
+            }
         }
     }
 }

@@ -11,11 +11,19 @@
  * y la marca de tiempo de ingreso para calcular el tiempo de espera.
  * ----------------------------------------------------------------------- */
 
+typedef enum {
+    MEM_REQ_ALLOC,   /* Solicitud pasiva de memoria simulada (mem-alloc <pid> <kb>) */
+    MEM_REQ_LAUNCH   /* Solicitud de lanzamiento de proceso en background (cmd &) */
+} mem_req_type_t;
+
 typedef struct mem_queue_node {
-    int    pid;
-    int    size_kb;
-    char   command[128];
-    time_t enqueued_at;
+    mem_req_type_t type;
+    int            pid;            /* PID para ALLOC (o 0 para LAUNCH) */
+    int            size_kb;
+    char           command[128];
+    char         **argv;           /* Argumentos clonados para LAUNCH (NULL para ALLOC) */
+    int            argc;
+    time_t         enqueued_at;
     struct mem_queue_node *next;
 } mem_queue_node_t;
 
@@ -25,16 +33,33 @@ typedef struct mem_queue_node {
 void mem_queue_init(void);
 
 /**
- * @brief Encola un proceso que no pudo obtener RAM.
+ * @brief Encola una solicitud pasiva de memoria simulada (ALLOC).
+ * @return Posición 1-based en la cola, o -1 si falla malloc.
+ */
+int mem_queue_enqueue_alloc(int pid, int size_kb, const char *command);
+
+/**
+ * @brief Encola una solicitud de lanzamiento de proceso en background (LAUNCH).
+ * @return Posición 1-based en la cola, o -1 si falla malloc.
+ */
+int mem_queue_enqueue_launch(char **argv, int argc, int size_kb, const char *cmd_display);
+
+/**
+ * @brief Encola un proceso que no pudo obtener RAM (mantiene compatibilidad, por defecto ALLOC).
  * @return Posición 1-based en la cola, o -1 si falla malloc.
  */
 int mem_queue_enqueue(int pid, int size_kb, const char *command);
 
 /**
- * @brief Desencola el primer proceso (FIFO). El llamador debe liberar el nodo.
+ * @brief Desencola el primer proceso (FIFO). El llamador debe liberar con mem_queue_free_node().
  * @return Puntero al nodo extraído, o NULL si la cola está vacía.
  */
 mem_queue_node_t *mem_queue_dequeue(void);
+
+/**
+ * @brief Libera un nodo extraído de la cola, liberando su argv si aplica.
+ */
+void mem_queue_free_node(mem_queue_node_t *node);
 
 /**
  * @brief Consulta el primer proceso sin extraerlo.

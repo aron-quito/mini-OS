@@ -142,3 +142,17 @@ void first_fit_view(void) {
 void first_fit_cleanup(void) {
     mem_reset_blocks();
 }
+
+int first_fit_can_alloc(int size_kb) {
+    if (size_kb <= 0 || size_kb > mem_state.total_ram_kb) {
+        return 0;
+    }
+    MemBlock *curr = mem_state.block_list;
+    while (curr != NULL) {
+        if (curr->status == BLOCK_FREE && curr->size_kb >= size_kb) {
+            return 1;
+        }
+        curr = curr->next;
+    }
+    return 0;
+}

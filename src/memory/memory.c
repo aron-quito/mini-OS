@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "memory.h"
+#include "first_fit.h"
 #include "paging.h"
 #include "mem_queue.h"  /* Issue 4.2 (SIS-51): encolado reactivo */
 
@@ -144,7 +145,9 @@ int memory_alloc(int pid, int size_kb) {
             /* Memoria insuficiente o fragmentación — encolar automáticamente */
             printf("[ALERTA] Memoria RAM insuficiente para asignar %d KB al PID %d.\n",
                    size_kb, pid);
-            int pos = mem_queue_enqueue(pid, size_kb, "");
+            char cmd_lbl[64];
+            snprintf(cmd_lbl, sizeof(cmd_lbl), "mem-alloc %d %d", pid, size_kb);
+            int pos = mem_queue_enqueue(pid, size_kb, cmd_lbl);
             if (pos < 0) {
                 fprintf(stderr, "[ERROR] No se pudo encolar el proceso PID %d (malloc fallido).\n", pid);
                 return -1;
@@ -164,6 +167,20 @@ int memory_free(int pid) {
         return ff_free(pid);
     }
     return paging_free(pid);
+}
+
+int memory_can_allocate(int size_kb) {
+    if (size_kb > mem_state.total_ram_kb) {
+        return -1;
+    }
+    if (size_kb <= 0) {
+        return 0;
+    }
+    if (memory_is_first_fit()) {
+        return first_fit_can_alloc(size_kb);
+    } else {
+        return paging_can_alloc(size_kb);
+    }
 }
 
 /**
@@ -572,9 +589,15 @@ static void format_queue_summary_line(char *out_buf, size_t buf_size) {
     } else {
         mem_queue_node_t *front = mem_queue_peek();
         if (front != NULL) {
-            snprintf(out_buf, buf_size,
-                     "Cola de Espera RAM: %d proceso(s) en espera (PID %d: %d KB)",
-                     q_len, front->pid, front->size_kb);
+            if (front->type == MEM_REQ_LAUNCH) {
+                snprintf(out_buf, buf_size,
+                         "Cola de Espera RAM: %d proceso(s) en espera ('%s': %d KB)",
+                         q_len, front->command, front->size_kb);
+            } else {
+                snprintf(out_buf, buf_size,
+                         "Cola de Espera RAM: %d proceso(s) en espera (PID %d: %d KB)",
+                         q_len, front->pid, front->size_kb);
+            }
         } else {
             snprintf(out_buf, buf_size,
                      "Cola de Espera RAM: %d proceso(s) en espera", q_len);

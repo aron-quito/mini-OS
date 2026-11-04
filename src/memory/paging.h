@@ -124,4 +124,10 @@ void paging_view(void);
  */
 void paging_cleanup(void);
 
+/**
+ * @brief Verifica si hay suficientes marcos libres para asignar size_kb.
+ * @return 1 si cabe, 0 si no cabe.
+ */
+int paging_can_alloc(int size_kb);
+
 #endif // PAGING_H

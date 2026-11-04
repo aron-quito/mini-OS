@@ -52,4 +52,10 @@ void first_fit_view(void);
  */
 void first_fit_cleanup(void);
 
+/**
+ * @brief Verifica si existe un bloque libre contiguo con capacidad >= size_kb.
+ * @return 1 si cabe, 0 si no cabe.
+ */
+int first_fit_can_alloc(int size_kb);
+
 #endif // FIRST_FIT_H
