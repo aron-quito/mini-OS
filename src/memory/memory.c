@@ -319,10 +319,21 @@ int memory_config_default(void) {
 }
 
 /**
+ * Helper para imprimir una fila formateada y perfectamente alineada
+ * dentro del marco de la tabla de mem-status.
+ * Ancho total de la fila: exactamente 52 caracteres (incluyendo bordes).
+ */
+static void print_status_row(const char *label, const char *value) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%-12s: %s", label, value);
+    printf("  |  %-44s  |\n", buf);
+}
+
+/**
  * mem-status
  *
  * Calcula KB usados/libres y bloques iterando la lista enlazada.
- * Presenta el resumen adaptado al algoritmo activo.
+ * Presenta el resumen adaptado al algoritmo activo con alineación exacta.
  */
 void memory_status(void) {
     int used_kb     = 0, free_kb     = 0;
@@ -341,33 +352,53 @@ void memory_status(void) {
     float pct_free = 100.0f - pct_used;
 
     const char *algo_name = memory_is_first_fit()
-        ? "First-Fit (Particion Dinamica Contigua)"
-        : "Paginacion (Marcos de Tamano Fijo)";
+        ? "First-Fit (Particion Dinamica)"
+        : "Paginacion (Marcos Fijos)";
+
+    char val_buf[64];
 
     printf("\n");
     printf("  +================================================+\n");
-    printf("  |       ESTADO DE MEMORIA -- MiniOS              |\n");
+    printf("  |          ESTADO DE MEMORIA -- MiniOS           |\n");
     printf("  +================================================+\n");
-    printf("  |  RAM total   : %-6d KB                       |\n", mem_state.total_ram_kb);
-    printf("  |  Algoritmo   : %-32s|\n", algo_name);
+
+    snprintf(val_buf, sizeof(val_buf), "%d KB", mem_state.total_ram_kb);
+    print_status_row("RAM total", val_buf);
+
+    print_status_row("Algoritmo", algo_name);
 
     if (memory_is_first_fit()) {
         /* Modo FF: información de bloques dinámicos */
-        printf("  |  Esquema     : Bloques contiguos variables     |\n");
-        printf("  |  Bloques lib.: %-6d                           |\n", free_blocks);
-        printf("  |  Bloques uso.: %-6d                           |\n", used_blocks);
+        print_status_row("Esquema", "Bloques contiguos variables");
+
+        snprintf(val_buf, sizeof(val_buf), "%d", free_blocks);
+        print_status_row("Bloques lib.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", used_blocks);
+        print_status_row("Bloques uso.", val_buf);
     } else {
-        /* Modo PAG: información de marcos (completar en Issue 5.x) */
-        printf("  |  Tamano pag. : %-6d KB                       |\n", mem_state.page_size_kb);
-        printf("  |  Marcos tot. : %-6d                           |\n", mem_state.total_frames);
+        /* Modo PAG: información de marcos */
+        snprintf(val_buf, sizeof(val_buf), "%d KB", mem_state.page_size_kb);
+        print_status_row("Tamano pag.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", mem_state.total_frames);
+        print_status_row("Marcos tot.", val_buf);
+
         int used_frames = (mem_state.page_size_kb > 0)
             ? used_kb / mem_state.page_size_kb : 0;
-        printf("  |  Marcos lib. : %-6d                           |\n", mem_state.total_frames - used_frames);
-        printf("  |  Marcos uso. : %-6d                           |\n", used_frames);
+        snprintf(val_buf, sizeof(val_buf), "%d", mem_state.total_frames - used_frames);
+        print_status_row("Marcos lib.", val_buf);
+
+        snprintf(val_buf, sizeof(val_buf), "%d", used_frames);
+        print_status_row("Marcos uso.", val_buf);
     }
 
-    printf("  |  Libre       : %-6d KB (%.1f%%)               |\n", free_kb, pct_free);
-    printf("  |  Usado       : %-6d KB (%.1f%%)               |\n", used_kb, pct_used);
+    snprintf(val_buf, sizeof(val_buf), "%d KB (%.1f%%)", free_kb, pct_free);
+    print_status_row("Libre", val_buf);
+
+    snprintf(val_buf, sizeof(val_buf), "%d KB (%.1f%%)", used_kb, pct_used);
+    print_status_row("Usado", val_buf);
+
     printf("  +================================================+\n");
     printf("\n");
 }
