@@ -1,12 +1,12 @@
 /*
- * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43) + Issue 3.1 (SIS-46) + Issue 7.1 (SIS-60)
+ * shell.c — Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43)
+ *         + Issue 3.1 (SIS-46) + Issue 3.2 (SIS-47) + Issue 7.1 (SIS-60)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento modular.
- * Issue 2.2 (Aron): Ejecución asíncrona en background con operador '&':
- *                   extracción del argumento de memoria (KB), bifurcación
- *                   fg/bg en shell_dispatch y cosecha limpia antes del prompt.
+ * Issue 2.2 (Aron): Ejecución asíncrona en background con operador '&'.
  * Issue 3.1 (Luis): Inicialización del subsistema de memoria física simulada.
+ * Issue 3.2 (Luis): Comandos mem-config (ram/page/frames/default) y mem-status.
  * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos (thread-demo y thread-stats).
  */
 
@@ -24,6 +24,8 @@
 static int builtin_help(Command *cmd);
 static int builtin_clear(Command *cmd);
 static int builtin_exit(Command *cmd);
+static int builtin_mem_config(Command *cmd);  /* Issue 3.2 */
+static int builtin_mem_status(Command *cmd);  /* Issue 3.2 */
 
 /* -----------------------------------------------------------------------
  * Tabla de despacho de comandos built-in
@@ -38,9 +40,12 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",  builtin_help  },
-    { "clear", builtin_clear },
-    { "exit",  builtin_exit  },
+    { "help",       builtin_help       },
+    { "clear",      builtin_clear      },
+    { "exit",       builtin_exit       },
+    /* Issue 3.2 (SIS-47): Configuración de RAM y diagnóstico */
+    { "mem-config", builtin_mem_config },
+    { "mem-status", builtin_mem_status },
 };
 
 /* Número de entradas en la tabla, calculado en tiempo de compilación */
@@ -109,8 +114,12 @@ static int builtin_help(Command *cmd) {
         printf("\n");
 
         printf("  [Módulo 3 — Memoria]   (disponible en Issue 3.1+)\n");
-        printf("    mem-config              Configura el tamaño de la RAM simulada.\n");
-        printf("    mem-view                Muestra el estado actual de la memoria.\n");
+        printf("    mem-config ram <KB>      Configura la RAM total; reinicia el bloque libre.\n");
+        printf("    mem-config page <KB>     Configura el tamaño de página (potencia de 2).\n");
+        printf("    mem-config frames <N>    Configura N marcos; recalcula RAM = N x page_size.\n");
+        printf("    mem-config default       Preset: 1024 KB RAM, 64 KB/página, 16 marcos, FF.\n");
+        printf("    mem-status               Muestra el resumen del estado de la memoria.\n");
+        printf("    mem-view                 Muestra el mapa visual de bloques (Issue 6.1).\n");
         printf("\n");
         return 0;
     }
@@ -159,8 +168,20 @@ static int builtin_help(Command *cmd) {
         printf("    pérdida de datos (siempre debe ser 0) y tiempo total de cómputo.\n\n");
         printf("    Debe ejecutarse después de thread-demo; si no hay sesión previa muestra aviso.\n\n");
     } else if (strcmp(topic, "mem-config") == 0) {
-        printf("\n  mem-config <tamaño_kb>\n");
-        printf("    Configura el tamaño de la memoria RAM física simulada en kilobytes.\n\n");
+        printf("\n  mem-config <sub-comando> [valor]\n");
+        printf("    Configura los parámetros de la memoria física simulada.\n\n");
+        printf("    Sub-comandos:\n");
+        printf("      ram <KB>      Redefine la RAM total. Requisito: múltiplo de page_size.\n");
+        printf("      page <KB>     Tamaño de página (potencia de 2). Latente en modo FF.\n");
+        printf("      frames <N>    N marcos; RAM = N * page_size_kb.\n");
+        printf("      default       Preset: 1024 KB RAM, 64 KB/pág, 16 marcos, First-Fit.\n\n");
+        printf("    Restricciones:\n");
+        printf("      - Rechazado si hay procesos activos en memoria.\n");
+        printf("      - En modo FF, 'mem-page-table' y 'mem-translate' están bloqueados.\n\n");
+    } else if (strcmp(topic, "mem-status") == 0) {
+        printf("\n  mem-status\n");
+        printf("    Muestra el estado actual de la memoria: RAM total, algoritmo,\n");
+        printf("    bloques libres/usados (FF) o marcos (PAG), y porcentaje de uso.\n\n");
     } else if (strcmp(topic, "mem-view") == 0) {
         printf("\n  mem-view\n");
         printf("    Visualiza el mapa de asignación de marcos/páginas y fragmentación de memoria.\n\n");
@@ -292,6 +313,25 @@ int shell_dispatch(char *line) {
         }
     }
 
+    /*
+     * Issue 3.2 (SIS-47) — Bloqueo de comandos de paginación en modo First-Fit.
+     *
+     * mem-page-table y mem-translate son exclusivos del modo PAG.
+     * Si el algoritmo activo es "ff", se rechazan con un mensaje explicativo.
+     */
+    if (memory_is_first_fit()) {
+        if (strcmp(cmd.argv[0], "mem-page-table") == 0 ||
+            strcmp(cmd.argv[0], "mem-translate")  == 0) {
+            fprintf(stderr,
+                "[ERROR] '%s' solo esta disponible en modo Paginacion.\n"
+                "        Algoritmo activo: First-Fit (particionamiento dinamico contiguo).\n"
+                "        Cambia a modo PAG con 'switch-ram pag' para usar este comando.\n",
+                cmd.argv[0]);
+            free_command(&cmd);
+            return 1;
+        }
+    }
+
     int result;
 
     if (cmd.is_background) {
@@ -311,6 +351,76 @@ int shell_dispatch(char *line) {
 
     free_command(&cmd);
     return result;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 3.2 (SIS-47) — Handlers de comandos de memoria
+ *
+ * Adaptan la firma (Command*) de la tabla de built-ins a la API de
+ * memory.c (tipos primitivos), manteniendo la separación entre la capa
+ * de presentación CLI y la lógica del kernel de memoria.
+ * ----------------------------------------------------------------------- */
+
+/**
+ * builtin_mem_config — Enruta sub-comandos: ram, page, frames, default.
+ *
+ * Parsea argv[1] como sub-comando y argv[2] como valor numérico opcional,
+ * luego delega en la función de memory.c correspondiente.
+ */
+static int builtin_mem_config(Command *cmd) {
+    if (cmd->argc < 2) {
+        fprintf(stderr,
+            "Uso: mem-config <sub-comando> [valor]\n"
+            "  mem-config ram <KB>      Configura la RAM total en KB.\n"
+            "  mem-config page <KB>     Configura el tamano de pagina en KB (potencia de 2).\n"
+            "  mem-config frames <N>    Configura N marcos; recalcula RAM = N * page_size.\n"
+            "  mem-config default       Preset: 1024 KB RAM, 64 KB/pagina, 16 marcos, FF.\n");
+        return 1;
+    }
+
+    const char *subcmd = cmd->argv[1];
+
+    /* Sub-comando "default": no requiere valor numérico */
+    if (strcmp(subcmd, "default") == 0) {
+        return memory_config_default();
+    }
+
+    /* Sub-comandos que requieren un valor numérico en argv[2] */
+    if (cmd->argc < 3) {
+        fprintf(stderr,
+            "[ERROR] 'mem-config %s' requiere un valor. Uso: mem-config %s <valor>\n",
+            subcmd, subcmd);
+        return 1;
+    }
+
+    /* Parseo defensivo del valor numérico */
+    char *endptr = NULL;
+    long val = strtol(cmd->argv[2], &endptr, 10);
+    if (*endptr != '\0' || endptr == cmd->argv[2] || val <= 0 || val > 1048576) {
+        fprintf(stderr,
+            "[ERROR] Valor invalido '%s'. Debe ser un entero positivo.\n",
+            cmd->argv[2]);
+        return 1;
+    }
+
+    if (strcmp(subcmd, "ram")    == 0) return memory_config_ram((int)val);
+    if (strcmp(subcmd, "page")   == 0) return memory_config_page((int)val);
+    if (strcmp(subcmd, "frames") == 0) return memory_config_frames((int)val);
+
+    fprintf(stderr,
+        "[ERROR] Sub-comando desconocido: '%s'\n"
+        "        Usa 'mem-config' sin argumentos para ver las opciones disponibles.\n",
+        subcmd);
+    return 1;
+}
+
+/**
+ * builtin_mem_status — Delega en memory_status() de memory.c.
+ */
+static int builtin_mem_status(Command *cmd) {
+    (void)cmd;
+    memory_status();
+    return 0;
 }
 
 /* -----------------------------------------------------------------------

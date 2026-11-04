@@ -100,4 +100,73 @@ void memory_view(void);
  */
 void memory_cleanup(void);
 
+/* =========================================================================
+ * Issue 3.2 (SIS-47): Comandos de configuración de RAM y presets
+ * ========================================================================= */
+
+/**
+ * @brief mem-config ram <KB>
+ *
+ * Redefine la RAM total. Validaciones:
+ *   - KB debe ser múltiplo de page_size_kb.
+ *   - Sin procesos activos en memoria.
+ * Regenera el bloque gigante libre y recalcula total_frames.
+ *
+ * @return 0 en éxito, 1 en error de validación.
+ */
+int memory_config_ram(int ram_kb);
+
+/**
+ * @brief mem-config page <KB>
+ *
+ * Establece el tamaño de página (parámetro latente para Paginación).
+ * Validaciones:
+ *   - Debe ser potencia de 2.
+ *   - ram_kb actual debe ser múltiplo del nuevo page_size_kb.
+ *   - Sin procesos activos en memoria.
+ * Recalcula total_frames automáticamente.
+ *
+ * @return 0 en éxito, 1 en error de validación.
+ */
+int memory_config_page(int page_kb);
+
+/**
+ * @brief mem-config frames <N>
+ *
+ * Establece N marcos; recalcula RAM = N * page_size_kb.
+ * Regenera el bloque gigante libre con la nueva RAM.
+ *
+ * @return 0 en éxito, 1 en error de validación.
+ */
+int memory_config_frames(int frames);
+
+/**
+ * @brief mem-config default
+ *
+ * Preset seguro: 1024 KB RAM, 64 KB/página, 16 marcos, First-Fit activo.
+ * Rechazado si hay procesos activos en memoria.
+ *
+ * @return 0 en éxito, 1 si hay procesos activos.
+ */
+int memory_config_default(void);
+
+/**
+ * @brief mem-status
+ *
+ * Imprime el estado actual de la memoria adaptado al algoritmo activo:
+ *   - First-Fit: bloques libres/usados, KB libre y usado.
+ *   - Paginación: marcos libres/usados (futuro Issue 5.x).
+ */
+void memory_status(void);
+
+/**
+ * @brief Verifica si el algoritmo activo es First-Fit.
+ *
+ * Usado en shell_dispatch para bloquear comandos de paginación
+ * cuando el modo activo es "ff".
+ *
+ * @return 1 si activo == First-Fit, 0 en caso contrario.
+ */
+int memory_is_first_fit(void);
+
 #endif // MEMORY_H
