@@ -21,8 +21,8 @@ Este directorio contiene las especificaciones técnicas detalladas y desacoplada
 |:---:|:---:|:---|:---:|:---:|
 | **SIS-42** | 2.1 | Ejecución foreground con fork, execvp y waitpid | ✅ Completado (`Done`) | *Mergeado en PR #3* |
 | **SIS-43** | 2.2 | Ejecución en background (&) y reserva de memoria | 🔍 En Revisión (`In Review`) | [SIS-43: Background y Memoria](sis-43.md) |
-| **SIS-44** | 2.3 | Tabla de control de procesos en background | ⏳ Siguiente (`Todo`) | *Próximamente* |
-| **SIS-45** | 2.4 | Comando ps-mini — Visualizador de procesos | 🔒 Bloqueado por SIS-44 | *Próximamente* |
+| **SIS-44** | 2.3 | Tabla de control de procesos en background | ✅ Completado (`Done`) | *Implementado en `main`* |
+| **SIS-45** | 2.4 | Comando ps-mini — Visualizador de procesos | ✅ Completado (`Done`) | [SIS-45: Comando ps-mini](sis-45.md) |
 
 ---
 
