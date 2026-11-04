@@ -21,6 +21,7 @@
  *                   verificacion de 0 perdidas de datos.
  * Issue 4.2 (JSON): Comandos mem-alloc <pid> <kb> y mem-free <pid>; encolado
  *                   automatico en mem_queue cuando la RAM es insuficiente.
+ * Issue 4.3 (JSON): Comando mem-queue -- muestra tabla de procesos en espera.
  */
 
 #include "shell.h"
@@ -46,6 +47,7 @@ static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_alloc(Command *cmd);            /* Issue 4.2 (SIS-51) */
 static int builtin_mem_free(Command *cmd);             /* Issue 4.2 (SIS-51) */
+static int builtin_mem_queue(Command *cmd);            /* Issue 4.3 (SIS-52) */
 static int builtin_mem_translate(Command *cmd);        /* Issue 5.2 (SIS-55) */
 static int builtin_mem_page_table(Command *cmd);       /* Issue 5.3 (SIS-56) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
@@ -76,6 +78,8 @@ static const BuiltinEntry BUILTINS[] = {
     /* Issue 4.2 (SIS-51): Asignacion y liberacion de memoria con encolado reactivo */
     { "mem-alloc",      builtin_mem_alloc      },
     { "mem-free",       builtin_mem_free       },
+    /* Issue 4.3 (SIS-52): Inspeccion de la cola de espera de RAM */
+    { "mem-queue",      builtin_mem_queue      },
     /* Issue 5.2 / 5.3 (SIS-55 / SIS-56): Comandos de Paginacion */
     { "mem-translate",  builtin_mem_translate  },
     { "mem-page-table", builtin_mem_page_table },
@@ -258,6 +262,16 @@ static int builtin_help(Command *cmd) {
         printf("      <pid>  PID del proceso cuya memoria se libera.\n\n");
         printf("    Ejemplo:\n");
         printf("      mem-free 42\n\n");
+    } else if (strcmp(topic, "mem-queue") == 0) {
+        printf("\n  mem-queue\n");
+        printf("    Muestra la tabla de procesos que estan esperando RAM.\n");
+        printf("    Por cada proceso muestra: posicion en la fila, PID, KB solicitados\n");
+        printf("    y el tiempo que lleva esperando en formato mm:ss.\n\n");
+        printf("    Muestra aviso si la cola esta vacia.\n\n");
+        printf("    Ejemplo:\n");
+        printf("      miniOS> mem-alloc 42 90   # asigna\n");
+        printf("      miniOS> mem-alloc 99 999  # encola (no cabe)\n");
+        printf("      miniOS> mem-queue         # muestra la tabla\n\n");
     } else if (strcmp(topic, "mem-translate") == 0) {
         printf("\n  mem-translate <pid> <dir_logica>\n");
         printf("    Traduce una direccion logica (KB) a su direccion fisica correspondiente\n");
@@ -558,6 +572,19 @@ static int builtin_mem_free(Command *cmd) {
     }
 
     return memory_free((int)pid) == 0 ? 0 : 1;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 4.3 (SIS-52) -- Handler de mem-queue
+ *
+ * Muestra la tabla de procesos en espera de RAM llamando a mem_queue_print().
+ * No recibe argumentos; los ignora si se pasan.
+ * ----------------------------------------------------------------------- */
+
+static int builtin_mem_queue(Command *cmd) {
+    (void)cmd;
+    mem_queue_print();
+    return 0;
 }
 
 /* -----------------------------------------------------------------------
