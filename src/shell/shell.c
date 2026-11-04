@@ -19,6 +19,8 @@
  *                   thread_demo_run() del modulo de hilos.
  * Issue 7.4 (JSON): Comando thread-stats -- estadisticas de sesion con
  *                   verificacion de 0 perdidas de datos.
+ * Issue 4.2 (JSON): Comandos mem-alloc <pid> <kb> y mem-free <pid>; encolado
+ *                   automatico en mem_queue cuando la RAM es insuficiente.
  */
 
 #include "shell.h"
@@ -26,6 +28,7 @@
 #include "../process/process.h"
 #include "../memory/memory.h"
 #include "../threads/producer_consumer.h" /* thread_demo_run, thread_get_stats -- Issues 7.3 / 7.4 */
+#include "../memory/mem_queue.h"             /* mem_queue_print -- Issue 4.2 (SIS-51) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +43,8 @@ static int builtin_thread_demo(Command *cmd);          /* Issue 7.3 (SIS-62) */
 static int builtin_thread_stats(Command *cmd);         /* Issue 7.4 (SIS-63) */
 static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
+static int builtin_mem_alloc(Command *cmd);            /* Issue 4.2 (SIS-51) */
+static int builtin_mem_free(Command *cmd);             /* Issue 4.2 (SIS-51) */
 static int builtin_ps_mini(Command *cmd);              /* Issue 2.3 (SIS-44) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
@@ -65,6 +70,9 @@ static const BuiltinEntry BUILTINS[] = {
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
     { "mem-config",   builtin_mem_config   },
     { "mem-status",   builtin_mem_status   },
+    /* Issue 4.2 (SIS-51): Asignacion y liberacion de memoria con encolado reactivo */
+    { "mem-alloc",   builtin_mem_alloc    },
+    { "mem-free",    builtin_mem_free     },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -221,6 +229,25 @@ static int builtin_help(Command *cmd) {
         printf("\n  mem-status\n");
         printf("    Muestra el estado actual de la memoria: RAM total, algoritmo,\n");
         printf("    bloques libres/usados (FF) o marcos (PAG), y porcentaje de uso.\n\n");
+    } else if (strcmp(topic, "mem-alloc") == 0) {
+        printf("\n  mem-alloc <pid> <kb>\n");
+        printf("    Asigna <kb> kilobytes de RAM al proceso con PID <pid>.\n");
+        printf("    Si no hay espacio contiguo disponible, el proceso se encola\n");
+        printf("    automaticamente en la cola FIFO de espera (mem_queue).\n\n");
+        printf("    Parametros:\n");
+        printf("      <pid>  Identificador del proceso (entero positivo).\n");
+        printf("      <kb>   Kilobytes de RAM solicitados (entero positivo).\n\n");
+        printf("    Ejemplos:\n");
+        printf("      mem-alloc 42 128    # asigna 128 KB al PID 42\n");
+        printf("      mem-alloc 99 2048   # encola si no hay 2048 KB libres\n\n");
+    } else if (strcmp(topic, "mem-free") == 0) {
+        printf("\n  mem-free <pid>\n");
+        printf("    Libera todos los bloques de RAM asignados al proceso <pid>.\n");
+        printf("    Aplica coalescencia de bloques adyacentes libres (Issue 3.4).\n\n");
+        printf("    Parametros:\n");
+        printf("      <pid>  PID del proceso cuya memoria se libera.\n\n");
+        printf("    Ejemplo:\n");
+        printf("      mem-free 42\n\n");
     } else if (strcmp(topic, "mem-view") == 0) {
         printf("\n  mem-view\n");
         printf("    Visualiza el mapa de asignacion de marcos/paginas y fragmentacion de memoria.\n\n");
@@ -454,6 +481,56 @@ static int builtin_mem_status(Command *cmd) {
     (void)cmd;
     memory_status();
     return 0;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 4.2 (SIS-51) -- Handlers de mem-alloc y mem-free
+ *
+ * builtin_mem_alloc: Parsea <pid> y <kb>, llama a memory_alloc().
+ *   Si hay RAM disponible: First-Fit la asigna y muestra confirmacion.
+ *   Si no hay espacio: memory_alloc encola automaticamente en mem_queue.
+ *
+ * builtin_mem_free: Parsea <pid>, llama a memory_free() (ff_free con coalescencia).
+ * ----------------------------------------------------------------------- */
+
+static int builtin_mem_alloc(Command *cmd) {
+    if (cmd->argc < 3) {
+        fprintf(stderr, "[ERROR] Uso: mem-alloc <pid> <kb>\n");
+        return 1;
+    }
+
+    char *endptr1 = NULL, *endptr2 = NULL;
+    long pid = strtol(cmd->argv[1], &endptr1, 10);
+    long kb  = strtol(cmd->argv[2], &endptr2, 10);
+
+    if (*endptr1 != '\0' || endptr1 == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] PID invalido '%s'. Debe ser un entero positivo.\n", cmd->argv[1]);
+        return 1;
+    }
+    if (*endptr2 != '\0' || endptr2 == cmd->argv[2] || kb <= 0) {
+        fprintf(stderr, "[ERROR] Tamano invalido '%s'. Debe ser un entero positivo (KB).\n", cmd->argv[2]);
+        return 1;
+    }
+
+    int r = memory_alloc((int)pid, (int)kb);
+    return (r == -1) ? 1 : 0;  /* 0=asignado, 1=encolado/error */
+}
+
+static int builtin_mem_free(Command *cmd) {
+    if (cmd->argc < 2) {
+        fprintf(stderr, "[ERROR] Uso: mem-free <pid>\n");
+        return 1;
+    }
+
+    char *endptr = NULL;
+    long pid = strtol(cmd->argv[1], &endptr, 10);
+
+    if (*endptr != '\0' || endptr == cmd->argv[1] || pid <= 0) {
+        fprintf(stderr, "[ERROR] PID invalido '%s'. Debe ser un entero positivo.\n", cmd->argv[1]);
+        return 1;
+    }
+
+    return memory_free((int)pid) == 0 ? 0 : 1;
 }
 
 /* -----------------------------------------------------------------------

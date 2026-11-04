@@ -84,7 +84,12 @@ void memory_init(int total_ram_kb, mem_algorithm_t algo);
 const mem_config_t *memory_get_config(void);
 
 /**
- * @brief Asigna memoria a un proceso según el algoritmo activo (Issue 3.3).
+ * @brief Asigna memoria a un proceso. Si falla, encola automáticamente (Issue 4.2).
+ *
+ * @param pid       PID del proceso solicitante.
+ * @param size_kb   Kilobytes de RAM solicitados.
+ * @param command   Nombre del proceso/comando (para registrar en mem_queue).
+ * @return 0 si asignado, 1 si encolado, -1 en error grave.
  */
 int memory_alloc(int pid, int size_kb);
 
@@ -105,7 +110,7 @@ int merge_adjacent_blocks(void);
 int pag_alloc(int pid, int size_kb);
 
 /**
- * @brief Libera la memoria de un proceso (stub para Issue 3.4 / ff_free).
+ * @brief Libera la memoria de un proceso (ff_free — Issue 3.4).
  */
 int memory_free(int pid);
 
