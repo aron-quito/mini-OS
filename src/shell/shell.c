@@ -169,7 +169,25 @@ static int builtin_help(Command *cmd) {
         printf("      sleep 10 256 &\n\n");
     } else if (strcmp(topic, "ps-mini") == 0) {
         printf("\n  ps-mini\n");
-        printf("    Muestra la lista de procesos activos y en segundo plano gestionados por el shell.\n\n");
+        printf("    Muestra la tabla de procesos en background de la sesion actual (Issue 2.4).\n\n");
+        printf("    Columnas:\n");
+        printf("      #          Numero de orden en la tabla (1-indexed).\n");
+        printf("      PID        ID del proceso hijo lanzado.\n");
+        printf("      PPID       ID del proceso padre (el shell, siempre el mismo).\n");
+        printf("      Comando    Cadena del comando ejecutado (truncada a 20 caracteres).\n");
+        printf("      RAM (KB)   Kilobytes reservados en la RAM simulada.\n");
+        printf("                 Muestra 0 KB si el proceso ya termino y la memoria fue liberada.\n");
+        printf("      Estado     RUNNING  = proceso activo en este momento.\n");
+        printf("                 DONE(N)  = proceso terminado con codigo de salida N.\n");
+        printf("                 KILLED(S)= proceso terminado por la senal S.\n\n");
+        printf("    Formato de salida:\n");
+        printf("      Tabla Unicode con bordes dobles (UTF-8). Hasta %d entradas.\n\n", MAX_BG_PROCESSES);
+        printf("    Ejemplo:\n");
+        printf("      miniOS> sleep 10 256 &\n");
+        printf("      miniOS> ls &\n");
+        printf("      miniOS> ps-mini\n\n");
+        printf("      Nota: solo registra procesos lanzados con '&'. Los procesos en\n");
+        printf("      foreground no aparecen en la tabla.\n\n");
     } else if (strcmp(topic, "thread-demo") == 0) {
         printf("\n  thread-demo [p] [c] [n]\n");
         printf("    Ejecuta la simulacion concurrente del problema clasico Productor-Consumidor.\n\n");
