@@ -1,6 +1,7 @@
 /*
  * shell.c -- Issue 1.2 (SIS-39) + Issue 1.4 (SIS-41) + Issue 2.2 (SIS-43)
- *           + Issue 3.1 (SIS-46) + Issue 3.2 (SIS-47) + Issue 7.1 (SIS-60) + Issue 7.3 (SIS-62)
+ *           + Issue 3.1 (SIS-46) + Issue 3.2 (SIS-47) + Issue 7.1 (SIS-60)
+ *           + Issue 7.3 (SIS-62) + Issue 7.4 (SIS-63)
  *
  * Issue 1.2 (Aron): Ciclo principal REPL (shell_loop).
  * Issue 1.4 (JSON): Dispatcher central con tabla de built-ins y enrutamiento
@@ -13,13 +14,15 @@
  * Issue 7.1 (JSON): Ayuda extendida en help con comandos de hilos.
  * Issue 7.3 (JSON): Comando thread-demo [p] [c] [n] conectado a
  *                   thread_demo_run() del modulo de hilos.
+ * Issue 7.4 (JSON): Comando thread-stats -- estadisticas de sesion con
+ *                   verificacion de 0 perdidas de datos.
  */
 
 #include "shell.h"
 #include "parser.h"
 #include "../process/process.h"
 #include "../memory/memory.h"
-#include "../threads/producer_consumer.h"  /* thread_demo_run, thread_get_stats -- Issue 7.3 */
+#include "../threads/producer_consumer.h" /* thread_demo_run, thread_get_stats -- Issues 7.3 / 7.4 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,9 +33,10 @@
 static int builtin_help(Command *cmd);
 static int builtin_clear(Command *cmd);
 static int builtin_exit(Command *cmd);
-static int builtin_thread_demo(Command *cmd);   /* Issue 7.3 (SIS-62) */
-static int builtin_mem_config(Command *cmd);    /* Issue 3.2 (SIS-47) */
-static int builtin_mem_status(Command *cmd);    /* Issue 3.2 (SIS-47) */
+static int builtin_thread_demo(Command *cmd);          /* Issue 7.3 (SIS-62) */
+static int builtin_thread_stats(Command *cmd);         /* Issue 7.4 (SIS-63) */
+static int builtin_mem_config(Command *cmd);           /* Issue 3.2 (SIS-47) */
+static int builtin_mem_status(Command *cmd);           /* Issue 3.2 (SIS-47) */
 static int extract_mem_kb(char **argv, int *argc_ptr); /* Issue 2.2 (SIS-43) */
 
 /* -----------------------------------------------------------------------
@@ -48,13 +52,14 @@ typedef struct {
 } BuiltinEntry;
 
 static const BuiltinEntry BUILTINS[] = {
-    { "help",        builtin_help        },
-    { "clear",       builtin_clear       },
-    { "exit",        builtin_exit        },
-    { "thread-demo", builtin_thread_demo }, /* Issue 7.3 (SIS-62) */
+    { "help",         builtin_help         },
+    { "clear",        builtin_clear        },
+    { "exit",         builtin_exit         },
+    { "thread-demo",  builtin_thread_demo  }, /* Issue 7.3 (SIS-62) */
+    { "thread-stats", builtin_thread_stats }, /* Issue 7.4 (SIS-63) */
     /* Issue 3.2 (SIS-47): Configuracion de RAM y diagnostico */
-    { "mem-config",  builtin_mem_config  },
-    { "mem-status",  builtin_mem_status  },
+    { "mem-config",   builtin_mem_config   },
+    { "mem-status",   builtin_mem_status   },
 };
 
 /* Numero de entradas en la tabla, calculado en tiempo de compilacion */
@@ -252,15 +257,13 @@ static int builtin_exit(Command *cmd) {
  * Llama a thread_demo_run() de producer_consumer.c (Issue 7.2).
  * ----------------------------------------------------------------------- */
 static int builtin_thread_demo(Command *cmd) {
-    int p = 2;   /* productores  */
-    int c = 2;   /* consumidores */
-    int n = 10;  /* items por productor */
+    int p = 2;   /* Productores por defecto */
+    int c = 2;   /* Consumidores por defecto */
+    int n = 10;  /* Items por productor por defecto */
 
     if (cmd->argc > 4) {
         fprintf(stderr, "miniOS: thread-demo: demasiados argumentos\n");
-        fprintf(stderr, "  Uso: thread-demo [p] [c] [n]\n");
-        fprintf(stderr, "       p = productores (defecto 2), c = consumidores (defecto 2),\n");
-        fprintf(stderr, "       n = items por productor (defecto 10)\n");
+        fprintf(stderr, "Uso: thread-demo [num_productores] [num_consumidores] [items_por_productor]\n");
         return 1;
     }
 
@@ -268,8 +271,7 @@ static int builtin_thread_demo(Command *cmd) {
         char *ep = NULL;
         long val = strtol(cmd->argv[1], &ep, 10);
         if (*ep != '\0' || ep == cmd->argv[1] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de productores debe ser un entero positivo\n",
-                    cmd->argv[1]);
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de productores debe ser un entero positivo\n", cmd->argv[1]);
             return 1;
         }
         p = (int)val;
@@ -279,8 +281,7 @@ static int builtin_thread_demo(Command *cmd) {
         char *ep = NULL;
         long val = strtol(cmd->argv[2], &ep, 10);
         if (*ep != '\0' || ep == cmd->argv[2] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de consumidores debe ser un entero positivo\n",
-                    cmd->argv[2]);
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de consumidores debe ser un entero positivo\n", cmd->argv[2]);
             return 1;
         }
         c = (int)val;
@@ -290,8 +291,7 @@ static int builtin_thread_demo(Command *cmd) {
         char *ep = NULL;
         long val = strtol(cmd->argv[3], &ep, 10);
         if (*ep != '\0' || ep == cmd->argv[3] || val <= 0) {
-            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de items debe ser un entero positivo\n",
-                    cmd->argv[3]);
+            fprintf(stderr, "miniOS: thread-demo: '%s': el numero de items debe ser un entero positivo\n", cmd->argv[3]);
             return 1;
         }
         n = (int)val;
@@ -307,6 +307,113 @@ static int builtin_thread_demo(Command *cmd) {
     }
 
     return thread_demo_run(p, c, n);
+}
+
+/* -----------------------------------------------------------------------
+ * builtin_thread_stats -- Issue 7.4 (SIS-63)
+ *
+ * Sintaxis: thread-stats
+ *
+ * Muestra las estadisticas de la ultima sesion de hilos ejecutada con
+ * thread-demo. Si no se ha ejecutado ninguna sesion, informa al usuario.
+ * ----------------------------------------------------------------------- */
+static int builtin_thread_stats(Command *cmd) {
+    (void)cmd; /* thread-stats no acepta argumentos */
+
+    const thread_stats_t *s = thread_get_stats();
+
+    if (s == NULL) {
+        printf("\n  [INFO] No hay sesion de hilos registrada.\n");
+        printf("         Ejecuta 'thread-demo' primero y luego consulta las estadisticas.\n\n");
+        return 0;
+    }
+
+    int loss = s->items_produced - s->items_consumed;
+
+    printf("\n");
+    printf("  +======================================================+\n");
+    printf("  |         ESTADISTICAS -- Sesion de Hilos              |\n");
+    printf("  +======================================================+\n");
+    printf("  |  Productores        : %-30d|\n", s->producers_count);
+    printf("  |  Consumidores       : %-30d|\n", s->consumers_count);
+    printf("  |  Items producidos   : %-30d|\n", s->items_produced);
+    printf("  |  Items consumidos   : %-30d|\n", s->items_consumed);
+
+    if (loss == 0) {
+        printf("  |  Perdida de datos   : 0  [OK - NINGUNA]             |\n");
+    } else {
+        printf("  |  Perdida de datos   : %-30d|\n", loss);
+        printf("  |  [ADVERTENCIA] Perdida detectada -- revisar sync!    |\n");
+    }
+
+    printf("  |  Capacidad del bufer: %-22d slots  |\n", BUFFER_SIZE);
+    printf("  |  Tiempo de computo  : %-24.3f seg  |\n", s->execution_time_sec);
+    printf("  +======================================================+\n");
+    printf("\n");
+
+    /* Retorna 1 si hubo perdida (para saber que algo fallo en las pruebas) */
+    return (loss != 0) ? 1 : 0;
+}
+
+/* -----------------------------------------------------------------------
+ * Issue 3.2 (SIS-47) -- Handlers de comandos de memoria
+ *
+ * Adaptan la firma (Command*) de la tabla de built-ins a la API de
+ * memory.c (tipos primitivos), manteniendo la separacion entre la capa
+ * de presentacion CLI y la logica del kernel de memoria.
+ * ----------------------------------------------------------------------- */
+
+static int builtin_mem_config(Command *cmd) {
+    if (cmd->argc < 2) {
+        fprintf(stderr,
+            "Uso: mem-config <sub-comando> [valor]\n"
+            "  mem-config ram <KB>      Configura la RAM total en KB.\n"
+            "  mem-config page <KB>     Configura el tamano de pagina en KB (potencia de 2).\n"
+            "  mem-config frames <N>    Configura N marcos; recalcula RAM = N * page_size.\n"
+            "  mem-config default       Preset: 1024 KB RAM, 64 KB/pagina, 16 marcos, FF.\n");
+        return 1;
+    }
+
+    const char *subcmd = cmd->argv[1];
+
+    /* Sub-comando "default": no requiere valor numerico */
+    if (strcmp(subcmd, "default") == 0) {
+        return memory_config_default();
+    }
+
+    /* Sub-comandos que requieren un valor numerico en argv[2] */
+    if (cmd->argc < 3) {
+        fprintf(stderr,
+            "[ERROR] 'mem-config %s' requiere un valor. Uso: mem-config %s <valor>\n",
+            subcmd, subcmd);
+        return 1;
+    }
+
+    /* Parseo defensivo del valor numerico */
+    char *endptr = NULL;
+    long val = strtol(cmd->argv[2], &endptr, 10);
+    if (*endptr != '\0' || endptr == cmd->argv[2] || val <= 0 || val > 1048576) {
+        fprintf(stderr,
+            "[ERROR] Valor invalido '%s'. Debe ser un entero positivo.\n",
+            cmd->argv[2]);
+        return 1;
+    }
+
+    if (strcmp(subcmd, "ram")    == 0) return memory_config_ram((int)val);
+    if (strcmp(subcmd, "page")   == 0) return memory_config_page((int)val);
+    if (strcmp(subcmd, "frames") == 0) return memory_config_frames((int)val);
+
+    fprintf(stderr,
+        "[ERROR] Sub-comando desconocido: '%s'\n"
+        "        Usa 'mem-config' sin argumentos para ver las opciones disponibles.\n",
+        subcmd);
+    return 1;
+}
+
+static int builtin_mem_status(Command *cmd) {
+    (void)cmd;
+    memory_status();
+    return 0;
 }
 
 /* -----------------------------------------------------------------------
@@ -334,9 +441,9 @@ static int extract_mem_kb(char **argv, int *argc_ptr) {
     }
 
     /* Verificar si el ultimo argumento es un entero puro positivo */
-    char *last   = argv[argc - 1];
+    char *last = argv[argc - 1];
     char *endptr = NULL;
-    long  val    = strtol(last, &endptr, 10);
+    long val = strtol(last, &endptr, 10);
 
     if (*endptr == '\0' && endptr != last && val > 0) {
         /* Es un numero: extraerlo del argv y ajustar argc */
@@ -349,15 +456,16 @@ static int extract_mem_kb(char **argv, int *argc_ptr) {
 }
 
 /* -----------------------------------------------------------------------
- * shell_dispatch -- Enrutador central de comandos (Issues 1.4 + 2.2)
+ * shell_dispatch -- Enrutador central de comandos (Issues 1.4 + 2.2 + 3.2)
  *
  * Flujo:
  *  1. Tokeniza 'line' usando parse_command() (Issue 1.3).
  *  2. Si la linea estaba vacia, retorna 0.
  *  3. Busca argv[0] en la tabla de built-ins y lo ejecuta si lo encuentra.
- *  4. Si no es un built-in y cmd.is_background == 0:
+ *  4. Bloquea comandos de paginacion si el modo activo es First-Fit (Issue 3.2).
+ *  5. Si no es un built-in y cmd.is_background == 0:
  *       -> process_execute_fg() -- sincrono (Issue 2.1).
- *  5. Si no es un built-in y cmd.is_background == 1:
+ *  6. Si no es un built-in y cmd.is_background == 1:
  *       -> Extrae el argumento de KB con extract_mem_kb().
  *       -> process_execute_bg() -- asincrono con reserva de RAM (Issue 2.2).
  *
@@ -384,8 +492,7 @@ int shell_dispatch(char *line) {
     }
 
     /*
-     * Issue 3.2 (SIS-47) — Bloqueo de comandos de paginación en modo First-Fit.
-     *
+     * Issue 3.2 (SIS-47) -- Bloqueo de comandos de paginacion en modo First-Fit.
      * mem-page-table y mem-translate son exclusivos del modo PAG.
      * Si el algoritmo activo es "ff", se rechazan con un mensaje explicativo.
      */
@@ -421,76 +528,6 @@ int shell_dispatch(char *line) {
 
     free_command(&cmd);
     return result;
-}
-
-/* -----------------------------------------------------------------------
- * Issue 3.2 (SIS-47) — Handlers de comandos de memoria
- *
- * Adaptan la firma (Command*) de la tabla de built-ins a la API de
- * memory.c (tipos primitivos), manteniendo la separación entre la capa
- * de presentación CLI y la lógica del kernel de memoria.
- * ----------------------------------------------------------------------- */
-
-/**
- * builtin_mem_config — Enruta sub-comandos: ram, page, frames, default.
- *
- * Parsea argv[1] como sub-comando y argv[2] como valor numérico opcional,
- * luego delega en la función de memory.c correspondiente.
- */
-static int builtin_mem_config(Command *cmd) {
-    if (cmd->argc < 2) {
-        fprintf(stderr,
-            "Uso: mem-config <sub-comando> [valor]\n"
-            "  mem-config ram <KB>      Configura la RAM total en KB.\n"
-            "  mem-config page <KB>     Configura el tamano de pagina en KB (potencia de 2).\n"
-            "  mem-config frames <N>    Configura N marcos; recalcula RAM = N * page_size.\n"
-            "  mem-config default       Preset: 1024 KB RAM, 64 KB/pagina, 16 marcos, FF.\n");
-        return 1;
-    }
-
-    const char *subcmd = cmd->argv[1];
-
-    /* Sub-comando "default": no requiere valor numérico */
-    if (strcmp(subcmd, "default") == 0) {
-        return memory_config_default();
-    }
-
-    /* Sub-comandos que requieren un valor numérico en argv[2] */
-    if (cmd->argc < 3) {
-        fprintf(stderr,
-            "[ERROR] 'mem-config %s' requiere un valor. Uso: mem-config %s <valor>\n",
-            subcmd, subcmd);
-        return 1;
-    }
-
-    /* Parseo defensivo del valor numérico */
-    char *endptr = NULL;
-    long val = strtol(cmd->argv[2], &endptr, 10);
-    if (*endptr != '\0' || endptr == cmd->argv[2] || val <= 0 || val > 1048576) {
-        fprintf(stderr,
-            "[ERROR] Valor invalido '%s'. Debe ser un entero positivo.\n",
-            cmd->argv[2]);
-        return 1;
-    }
-
-    if (strcmp(subcmd, "ram")    == 0) return memory_config_ram((int)val);
-    if (strcmp(subcmd, "page")   == 0) return memory_config_page((int)val);
-    if (strcmp(subcmd, "frames") == 0) return memory_config_frames((int)val);
-
-    fprintf(stderr,
-        "[ERROR] Sub-comando desconocido: '%s'\n"
-        "        Usa 'mem-config' sin argumentos para ver las opciones disponibles.\n",
-        subcmd);
-    return 1;
-}
-
-/**
- * builtin_mem_status — Delega en memory_status() de memory.c.
- */
-static int builtin_mem_status(Command *cmd) {
-    (void)cmd;
-    memory_status();
-    return 0;
 }
 
 /* -----------------------------------------------------------------------
