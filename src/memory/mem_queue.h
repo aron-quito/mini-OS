@@ -3,38 +3,50 @@
 
 #include <time.h>
 
+/* -----------------------------------------------------------------------
+ * mem_queue.h — Issue 4.1 (SIS-50)
+ *
+ * Cola FIFO de procesos que esperan memoria RAM disponible.
+ * Cada nodo guarda el PID, el tamaño solicitado (KB), el comando
+ * y la marca de tiempo de ingreso para calcular el tiempo de espera.
+ * ----------------------------------------------------------------------- */
+
 typedef struct mem_queue_node {
-    int pid;
-    int size_kb;
-    char command[128];
+    int    pid;
+    int    size_kb;
+    char   command[128];
     time_t enqueued_at;
     struct mem_queue_node *next;
 } mem_queue_node_t;
 
 /**
- * @brief Inicializa la cola FIFO de procesos esperando memoria.
+ * @brief Inicializa la cola FIFO (debe llamarse una vez al inicio).
  */
 void mem_queue_init(void);
 
 /**
  * @brief Encola un proceso que no pudo obtener RAM.
+ * @return Posición 1-based en la cola, o -1 si falla malloc.
  */
 int mem_queue_enqueue(int pid, int size_kb, const char *command);
 
 /**
- * @brief Desencola el primer proceso de la cola FIFO.
+ * @brief Desencola el primer proceso (FIFO). El llamador debe liberar el nodo.
+ * @return Puntero al nodo extraído, o NULL si la cola está vacía.
  */
 mem_queue_node_t *mem_queue_dequeue(void);
 
 /**
- * @brief Obtiene el primer proceso de la cola sin extraerlo.
+ * @brief Consulta el primer proceso sin extraerlo.
+ * @return Puntero al nodo frontal, o NULL si la cola está vacía.
  */
 mem_queue_node_t *mem_queue_peek(void);
 
 /**
- * @brief Muestra el estado de la cola de espera de memoria (mem-queue).
+ * @brief Elimina el nodo con el PID dado (libera internamente).
+ * @return 0 si se encontró y eliminó, -1 si no existe.
  */
-void mem_queue_print(void);
+int mem_queue_remove(int pid);
 
 /**
  * @brief Retorna la cantidad de procesos en cola.
@@ -46,4 +58,9 @@ int mem_queue_length(void);
  */
 void mem_queue_clear(void);
 
-#endif // MEM_QUEUE_H
+/**
+ * @brief Muestra la tabla de procesos en espera (comando mem-queue).
+ */
+void mem_queue_print(void);
+
+#endif /* MEM_QUEUE_H */
