@@ -5,8 +5,13 @@
 [![Memory Audit](https://img.shields.io/badge/Valgrind%20%2F%20ASan-0%20Leaks%20%7C%200%20Errors-brightgreen)](docs/valgrind_report.txt)
 [![Thread Safety](https://img.shields.io/badge/TSan-0%20Data%20Races-success)](docs/valgrind_report.txt)
 
-Video Explicativo:
-- Aron Rene Cachicatari Quito https://youtu.be/_skosArJue8
+### Video Explicativo:
+| Estudiante | Enlace de video de YouTube |
+| :--- | :--- |
+| Aron Rene Cachicatari Quito | https://youtu.be/_skosArJue8 | 
+| Johan Anibal Mamani Catacora | https://youtu.be/8Pj0ZkAoBEU |
+| Luis Fernando Condori Caljaro | https://youtu.be/Wb4ViLfgM5w |
+
 
 **miniOS** es un shell interactivo tipo REPL (*Read-Eval-Print Loop*) desarrollado en **C11 estándar (`-std=c11`)** sobre la API **POSIX.1-2008** (`_POSIX_C_SOURCE=200809L`). Modela de forma integrada e interactiva los tres subsistemas fundamentales de un sistema operativo moderno:
 
