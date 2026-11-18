@@ -7,8 +7,9 @@
 
 ### Video Explicativo:
 | Estudiante | Enlace de video de YouTube |
-| :--- | :--- | :--- |
+| :--- | :--- |
 | Aron Rene Cachicatari Quito | https://youtu.be/_skosArJue8 | 
+| Johan Anibal Mamani Catacora | https://youtu.be/8Pj0ZkAoBEU |
 
 
 **miniOS** es un shell interactivo tipo REPL (*Read-Eval-Print Loop*) desarrollado en **C11 estándar (`-std=c11`)** sobre la API **POSIX.1-2008** (`_POSIX_C_SOURCE=200809L`). Modela de forma integrada e interactiva los tres subsistemas fundamentales de un sistema operativo moderno:
